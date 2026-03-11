@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eventix · discover & book experiences</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <link rel="stylesheet" href="home.css">
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="content-wrapper">
+        <nav class="navbar">
+            <div class="logo">eventix<span>.</span></div>
+            <div class="nav-links">
+                <a href="#">events</a>
+                <a href="#">explore</a>
+                <a href="#">for you</a>
+                <a href="#" class="btn-outline"><i class="fa-regular fa-user"></i> sign in</a>
+            </div>
+        </nav>
+
+        
+        <section class="hero">
+            <div class="carousel-container" id="carousel">
+                <div class="carousel-slides" id="carouselSlides">
+                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1531058020387-3be344556be6?q=80&w=2070&auto=format&fit=crop');">
+                        <div class="slide-content">
+                            <h1>Feel the rhythm<br>live tonight</h1>
+                            <p>undiscovered DJs & massive beats – tickets now</p>
+                            <div class="btn-group">
+                                <button class="btn-primary"><i class="fa-solid fa-ticket"></i> grab tickets</button>
+                                <button class="btn-secondary"><i class="fa-regular fa-circle-play"></i> watch trailer</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=2070&auto=format&fit=crop');">
+                        <div class="slide-content">
+                            <h1>comedy nights<br>with top stars</h1>
+                            <p>unforgettable laughter – special guests every week</p>
+                            <div class="btn-group">
+                                <button class="btn-primary"><i class="fa-regular fa-face-smile"></i> see line-up</button>
+                                <button class="btn-secondary"><i class="fa-regular fa-calendar-check"></i> book early</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=2070&auto=format&fit=crop');">
+                        <div class="slide-content">
+                            <h1>theatre &<br>cultural fest</h1>
+                            <p>drama, dance & stories from around the world</p>
+                            <div class="btn-group">
+                                <button class="btn-primary"><i class="fa-solid fa-masks-theater"></i> explore shows</button>
+                                <button class="btn-secondary"><i class="fa-regular fa-gem"></i> members only</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="carousel-arrow left-arrow" id="leftArrow"><i class="fas fa-chevron-left"></i></div>
+                <div class="carousel-arrow right-arrow" id="rightArrow"><i class="fas fa-chevron-right"></i></div>
+                <div class="dot-container" id="dotContainer">
+                    <span class="dot active"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </div>
+            </div>
+        </section>
+
+        
+        <section class="featured-section">
+            <div class="section-title">
+                <h2>trending now <i>live</i></h2>
+                <a href="#">view all <i class="fa-solid fa-arrow-right"></i></a>
+            </div>
+            <div class="category-grid" id="categoryGrid">
+                <div class="category-card" data-count="38">
+                    <div class="category-icon"><i class="fas fa-music"></i></div>
+                    <h3>concerts</h3>
+                    <p>rock, pop, indie</p>
+                    <span class="event-count" id="count1">38 events</span>
+                </div>
+                <div class="category-card" data-count="52">
+                    <div class="category-icon"><i class="fas fa-microphone-alt"></i></div>
+                    <h3>comedy</h3>
+                    <p>stand-up, improv</p>
+                    <span class="event-count" id="count2">52 events</span>
+                </div>
+                <div class="category-card" data-count="27">
+                    <div class="category-icon"><i class="fas fa-paint-brush"></i></div>
+                    <h3>workshops</h3>
+                    <p>art, wellness</p>
+                    <span class="event-count" id="count3">27 events</span>
+                </div>
+                <div class="category-card" data-count="44">
+                    <div class="category-icon"><i class="fas fa-utensils"></i></div>
+                    <h3>food fest</h3>
+                    <p>tasting, pop-ups</p>
+                    <span class="event-count" id="count4">44 events</span>
+                </div>
+            </div>
+        </section>
+
+        
+        <section class="events-section">
+            <div class="events-header">
+                <h2>🔮 coming soon near you</h2>
+                <a href="#" style="color:#e13b2e;">more <i class="fa-regular fa-calendar"></i></a>
+            </div>
+            <div class="event-cards" id="eventCardsContainer"></div>
+        </section>
+
+        
+        <div class="newsletter">
+            <h3>never miss a beat</h3>
+            <p>get curated events & early access</p>
+            <div class="newsletter-input">
+                <input type="email" placeholder="your.email@example.com" id="newsletterEmail">
+                <button id="subscribeBtn"><i class="fa-regular fa-bell"></i> subscribe</button>
+            </div>
+            <small style="display:block; margin-top:1.5rem; opacity:0.7;">✨ join 120k+ event lovers</small>
+        </div>
+
+        <footer>
+            <p>eventix · 2025 · discover the extraordinary ✦</p>
+        </footer>
+    </div>
+
+    
+    <script src="home.js"></script>
+</body>
+</html>
