@@ -176,3 +176,34 @@
         setTimeout(() => this.style.transform = 'scale(1)', 200);
     });
 })();
+
+
+// Check if user is logged in and update sign in button
+let currentUser = null;
+try {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+        currentUser = JSON.parse(userData);
+    }
+} catch (error) {
+    console.error('Error loading user data:', error);
+}
+
+// Update sign in button with profile picture
+window.addEventListener('DOMContentLoaded', () => {
+    const signInBtn = document.querySelector('.btn-outline');
+    if (currentUser && signInBtn) {
+        // Replace sign in button with profile picture
+        signInBtn.innerHTML = `<img src="${currentUser.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(currentUser.name) + '&size=40&background=e13b2e&color=fff&rounded=true'}" alt="${currentUser.name}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #e13b2e;">`;
+        signInBtn.style.padding = '0.25rem';
+        signInBtn.onclick = (e) => {
+            e.preventDefault();
+            window.location.href = 'profile.html';
+        };
+    } else if (signInBtn) {
+        signInBtn.onclick = (e) => {
+            e.preventDefault();
+            window.location.href = 'login.html';
+        };
+    }
+});

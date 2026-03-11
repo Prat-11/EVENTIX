@@ -52,6 +52,13 @@ app.post('/api/users/register', async (req, res) => {
       name,
       email,
       password, // WARNING: In production, use bcrypt to hash passwords!
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=128&background=e13b2e&color=fff&rounded=true`,
+      phone: '',
+      dob: '',
+      location: '',
+      bio: '',
+      interests: [],
+      notifications: 'all',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     
@@ -62,7 +69,8 @@ app.post('/api/users/register', async (req, res) => {
       data: { 
         id: docRef.id, 
         name, 
-        email 
+        email,
+        avatar: newUser.avatar
       } 
     });
   } catch (error) {
@@ -102,7 +110,8 @@ app.post('/api/users/login', async (req, res) => {
       data: { 
         id: userDoc.id, 
         name: userData.name, 
-        email: userData.email 
+        email: userData.email,
+        avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&size=128&background=e13b2e&color=fff&rounded=true`
       } 
     });
   } catch (error) {
@@ -123,13 +132,44 @@ app.get('/api/users/:id', async (req, res) => {
     }
     
     const userData = userDoc.data();
+    // Don't send password
+    delete userData.password;
+    
     res.json({ 
       success: true, 
       data: { 
         id: userDoc.id, 
-        name: userData.name, 
-        email: userData.email 
+        ...userData
       } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update user profile
+app.put('/api/users/:id', async (req, res) => {
+  try {
+    const { name, avatar, phone, dob, location, bio, interests, notifications } = req.body;
+    
+    const updateData = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    if (name) updateData.name = name;
+    if (avatar) updateData.avatar = avatar;
+    if (phone !== undefined) updateData.phone = phone;
+    if (dob !== undefined) updateData.dob = dob;
+    if (location !== undefined) updateData.location = location;
+    if (bio !== undefined) updateData.bio = bio;
+    if (interests) updateData.interests = interests;
+    if (notifications) updateData.notifications = notifications;
+    
+    await db.collection('users').doc(req.params.id).update(updateData);
+    
+    res.json({ 
+      success: true, 
+      message: 'Profile updated successfully' 
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

@@ -1,5 +1,22 @@
+const API_URL = 'http://localhost:5000/api';
+
+// Check if user is logged in
+let currentUser = null;
+try {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+        currentUser = JSON.parse(userData);
+    } else {
+        // Redirect to login if not logged in
+        window.location.href = 'login.html';
+    }
+} catch (error) {
+    console.error('Error loading user data:', error);
+    window.location.href = 'login.html';
+}
+
 (function() {
-    // ========== ANIMATED BACKGROUND (same as homepage) ==========
+    // ========== ANIMATED BACKGROUND ==========
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
     let width, height;
@@ -88,106 +105,126 @@
 
     // ========== PROFILE PAGE FUNCTIONALITY ==========
     
-    // --- Avatar Upload ---
     const avatarUploadBtn = document.getElementById('avatarUploadBtn');
     const avatarInput = document.getElementById('avatarInput');
     const avatarPreview = document.getElementById('avatarPreview');
+    const profileForm = document.getElementById('profileForm');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
 
-    // Trigger file input when avatar wrapper is clicked
+    // Load user profile from backend
+    async function loadUserProfile() {
+        try {
+            const response = await fetch(`${API_URL}/users/${currentUser.id}`);
+            const data = await response.json();
+            
+            if (data.success) {
+                const profile = data.data;
+                
+                // Set form fields
+                document.getElementById('fullName').value = profile.name || '';
+                document.getElementById('email').value = profile.email || '';
+                document.getElementById('phone').value = profile.phone || '';
+                document.getElementById('dob').value = profile.dob || '';
+                document.getElementById('location').value = profile.location || '';
+                document.getElementById('bio').value = profile.bio || '';
+                
+                // Set avatar
+                if (profile.avatar) {
+                    avatarPreview.src = profile.avatar;
+                }
+                
+                // Set interests
+                if (profile.interests && profile.interests.length > 0) {
+                    document.querySelectorAll('input[name="interests"]').forEach(cb => {
+                        cb.checked = profile.interests.includes(cb.value);
+                    });
+                }
+                
+                // Set notifications
+                if (profile.notifications) {
+                    const radio = document.querySelector(`input[name="notifications"][value="${profile.notifications}"]`);
+                    if (radio) radio.checked = true;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading profile:', error);
+            showToast('Error loading profile', 'error');
+        }
+    }
+
+    // Avatar upload
     avatarUploadBtn.addEventListener('click', () => {
         avatarInput.click();
     });
 
-    // Handle file selection
     avatarInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = function(event) {
                 avatarPreview.src = event.target.result;
-                // Show success message (optional)
                 showToast('Profile picture updated');
             };
             reader.readAsDataURL(file);
         }
     });
 
-    // --- Form Submission (Save Changes) ---
-    const profileForm = document.getElementById('profileForm');
-    const saveBtn = document.getElementById('saveBtn');
-    const cancelBtn = document.getElementById('cancelBtn');
-
-    // Load saved data from localStorage if exists
-    function loadSavedProfile() {
-        const savedData = localStorage.getItem('eventixProfile');
-        if (savedData) {
-            const data = JSON.parse(savedData);
-            
-            // Set form fields (except email - keep original)
-            document.getElementById('fullName').value = data.fullName || 'Alex Morgan';
-            document.getElementById('phone').value = data.phone || '+1 (555) 123-4567';
-            document.getElementById('dob').value = data.dob || '1995-06-15';
-            document.getElementById('location').value = data.location || 'New York, NY';
-            document.getElementById('bio').value = data.bio || 'Music enthusiast, event organizer, and comedy lover. Always looking for the next great experience!';
-            
-            // Set avatar if exists
-            if (data.avatar) {
-                avatarPreview.src = data.avatar;
-            }
-            
-            // Set interests checkboxes
-            if (data.interests) {
-                document.querySelectorAll('input[name="interests"]').forEach(cb => {
-                    cb.checked = data.interests.includes(cb.value);
-                });
-            }
-            
-            // Set notification preference
-            if (data.notifications) {
-                const radio = document.querySelector(`input[name="notifications"][value="${data.notifications}"]`);
-                if (radio) radio.checked = true;
-            }
-        }
-    }
-
-    // Save form data to localStorage
-    function saveProfileData() {
-        // Collect interests
+    // Save profile
+    async function saveProfileData() {
         const interests = [];
         document.querySelectorAll('input[name="interests"]:checked').forEach(cb => {
             interests.push(cb.value);
         });
         
-        // Get notification preference
         const notificationPref = document.querySelector('input[name="notifications"]:checked')?.value || 'all';
         
         const profileData = {
-            fullName: document.getElementById('fullName').value,
-            email: document.getElementById('email').value, // included but not editable
+            name: document.getElementById('fullName').value,
+            avatar: avatarPreview.src,
             phone: document.getElementById('phone').value,
             dob: document.getElementById('dob').value,
             location: document.getElementById('location').value,
             bio: document.getElementById('bio').value,
-            avatar: avatarPreview.src,
             interests: interests,
             notifications: notificationPref
         };
         
-        localStorage.setItem('eventixProfile', JSON.stringify(profileData));
-        showToast('Profile saved successfully!', 'success');
+        try {
+            const response = await fetch(`${API_URL}/users/${currentUser.id}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(profileData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Update localStorage
+                currentUser.name = profileData.name;
+                currentUser.avatar = profileData.avatar;
+                localStorage.setItem('user', JSON.stringify(currentUser));
+                
+                showToast('Profile saved successfully!', 'success');
+            } else {
+                showToast('Failed to save profile: ' + data.error, 'error');
+            }
+        } catch (error) {
+            console.error('Error saving profile:', error);
+            showToast('Error saving profile', 'error');
+        }
     }
 
-    // Show toast notification
     function showToast(message, type = 'success') {
-        // Create toast element
         const toast = document.createElement('div');
         toast.className = `toast-notification ${type}`;
         toast.innerHTML = `
-            <i class="fa-regular ${type === 'success' ? 'fa-circle-check' : 'fa-circle-info'}"></i>
+            <i class="fa-regular ${type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
             <span>${message}</span>
         `;
         
-        // Style the toast
         toast.style.position = 'fixed';
         toast.style.bottom = '30px';
         toast.style.right = '30px';
@@ -205,14 +242,12 @@
         
         document.body.appendChild(toast);
         
-        // Remove after 3 seconds
         setTimeout(() => {
             toast.style.animation = 'slideOut 0.3s ease';
             setTimeout(() => toast.remove(), 300);
         }, 3000);
     }
 
-    // Add animation styles for toast
     const style = document.createElement('style');
     style.textContent = `
         @keyframes slideIn {
@@ -226,63 +261,38 @@
     `;
     document.head.appendChild(style);
 
-    // Handle form submit
     profileForm.addEventListener('submit', function(e) {
         e.preventDefault();
         saveProfileData();
     });
 
-    // Handle save button click (as backup)
     saveBtn.addEventListener('click', function(e) {
         e.preventDefault();
         saveProfileData();
     });
 
-    // Handle cancel button
     cancelBtn.addEventListener('click', function() {
         if (confirm('Discard unsaved changes?')) {
-            loadSavedProfile(); // Reload saved data
+            loadUserProfile();
             showToast('Changes discarded', 'info');
         }
     });
 
-    // --- Danger Zone Actions ---
+    // Danger zone actions
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     const deactivateBtn = document.getElementById('deactivateBtn');
 
     changePasswordBtn.addEventListener('click', function() {
-        alert('🔒 Password change request sent to your email (demo)');
+        alert('🔒 Password change feature coming soon!');
     });
 
     deactivateBtn.addEventListener('click', function() {
-        if (confirm('Are you sure you want to deactivate your account? This action can be reversed later.')) {
-            alert('Account deactivation requested (demo)');
+        if (confirm('Are you sure you want to deactivate your account?')) {
+            localStorage.removeItem('user');
+            window.location.href = 'login.html';
         }
     });
 
-    // Load saved profile on page load
-    loadSavedProfile();
-
-    // Double click on logo effect (same as homepage)
-    document.querySelector('.logo').addEventListener('dblclick', function(){
-        this.style.transform = 'scale(1.05)';
-        setTimeout(() => this.style.transform = 'scale(1)', 200);
-    });
-
-    // Form validation (optional)
-    const phoneInput = document.getElementById('phone');
-    phoneInput.addEventListener('input', function(e) {
-        // Simple phone formatting (optional)
-        let value = e.target.value.replace(/\D/g, '');
-        if (value.length > 0) {
-            if (value.length <= 3) {
-                value = `+1 (${value}`;
-            } else if (value.length <= 6) {
-                value = `+1 (${value.slice(0,3)}) ${value.slice(3)}`;
-            } else {
-                value = `+1 (${value.slice(0,3)}) ${value.slice(3,6)}-${value.slice(6,10)}`;
-            }
-            e.target.value = value;
-        }
-    });
+    // Load profile on page load
+    loadUserProfile();
 })();
