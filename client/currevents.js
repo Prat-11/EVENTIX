@@ -1,5 +1,34 @@
 const API_URL = 'http://localhost:5000/api';
 
+// Check if user is logged in
+let currentUser = null;
+try {
+    const userData = localStorage.getItem('user');
+    if (userData) {
+        currentUser = JSON.parse(userData);
+    }
+} catch (error) {
+    console.error('Error loading user data:', error);
+}
+
+// Update sign in button
+window.addEventListener('DOMContentLoaded', () => {
+    const signInBtn = document.querySelector('.sign-in-btn');
+    if (currentUser) {
+        signInBtn.textContent = `👤 ${currentUser.name}`;
+        signInBtn.onclick = () => {
+            if (confirm('Do you want to logout?')) {
+                localStorage.removeItem('user');
+                window.location.reload();
+            }
+        };
+    } else {
+        signInBtn.onclick = () => {
+            window.location.href = 'signup.html';
+        };
+    }
+});
+
 // DOM Elements
 const createBtn = document.getElementById('createBtn');
 const createModal = document.getElementById('createModal');
@@ -141,6 +170,13 @@ createEventForm.addEventListener('submit', async (e) => {
 
 // Open Enroll Modal
 function openEnrollModal(eventId, eventName, date, required, enrolled) {
+    // Check if user is logged in
+    if (!currentUser) {
+        alert('Please sign in to enroll in events');
+        window.location.href = 'signup.html';
+        return;
+    }
+    
     selectedEventId = eventId;
     const spotsLeft = required - enrolled;
     
@@ -148,6 +184,11 @@ function openEnrollModal(eventId, eventName, date, required, enrolled) {
         <h3>${eventName}</h3>
         <p>Date: ${new Date(date).toLocaleDateString()}</p>
         <p>Spots Available: ${spotsLeft} / ${required}</p>
+        <div style="margin-top: 1rem; padding: 1rem; background: rgba(225, 59, 46, 0.1); border-radius: 8px; border: 1px solid rgba(225, 59, 46, 0.3);">
+            <p style="color: #ff4444; font-weight: 600;">Enrolling as:</p>
+            <p style="color: #ccc; margin-top: 0.5rem;">${currentUser.name}</p>
+            <p style="color: #999; font-size: 0.9rem;">${currentUser.email}</p>
+        </div>
     `;
     
     enrollModal.style.display = 'block';
@@ -157,10 +198,11 @@ function openEnrollModal(eventId, eventName, date, required, enrolled) {
 enrollForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const enrollData = {
-        userName: document.getElementById('userName').value,
-        userEmail: document.getElementById('userEmail').value
-    };
+    if (!currentUser) {
+        alert('Please sign in to enroll');
+        window.location.href = 'signup.html';
+        return;
+    }
 
     try {
         const response = await fetch(`${API_URL}/events/${selectedEventId}/enroll`, {
@@ -168,7 +210,9 @@ enrollForm.addEventListener('submit', async (e) => {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(enrollData)
+            body: JSON.stringify({
+                userId: currentUser.id
+            })
         });
 
         const data = await response.json();
@@ -176,7 +220,6 @@ enrollForm.addEventListener('submit', async (e) => {
         if (data.success) {
             alert('Enrollment successful!');
             enrollModal.style.display = 'none';
-            enrollForm.reset();
             fetchEvents();
         } else {
             alert('Enrollment failed: ' + data.error);
