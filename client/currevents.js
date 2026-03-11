@@ -57,39 +57,45 @@ function displayEvents(events) {
         return;
     }
 
-    eventsGrid.innerHTML = events.map(event => {
+    const eventIcons = ['🎭', '🎵', '🎪', '🎨', '🎬', '🎤', '🎸', '🎺', '🎻', '🎹'];
+
+    eventsGrid.innerHTML = events.map((event, index) => {
         const spotsLeft = event.membersRequired - event.enrolledMembers;
         const isFull = spotsLeft <= 0;
         const progress = (event.enrolledMembers / event.membersRequired) * 100;
+        const icon = eventIcons[index % eventIcons.length];
 
         return `
             <div class="event-card">
-                <div class="event-header">
-                    <h3 class="event-name">${event.eventName}</h3>
-                    <p class="organizer">Organized by ${event.organizerName}</p>
-                </div>
-                <div class="event-details">
-                    <div class="detail-item">
-                        <span class="detail-label">Date:</span>
-                        <span>${new Date(event.date).toLocaleDateString()}</span>
+                <div class="event-image">${icon}</div>
+                <div class="event-content">
+                    <div class="event-header">
+                        <h3 class="event-name">${event.eventName}</h3>
+                        <p class="organizer">by ${event.organizerName}</p>
                     </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Enrolled:</span>
-                        <span>${event.enrolledMembers} / ${event.membersRequired}</span>
+                    <div class="event-details">
+                        <div class="detail-item">
+                            <span class="detail-label">Date</span>
+                            <span>${new Date(event.date).toLocaleDateString()}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Enrolled</span>
+                            <span>${event.enrolledMembers} / ${event.membersRequired}</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${progress}%"></div>
+                        </div>
                     </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${progress}%"></div>
-                    </div>
-                </div>
-                <div class="event-footer">
-                    <span class="spots-left ${isFull ? 'spots-full' : ''}">
-                        ${isFull ? 'Event Full' : `${spotsLeft} spots left`}
-                    </span>
-                    <div>
-                        <button class="enroll-btn" onclick="openEnrollModal('${event.id}', '${event.eventName}', '${event.date}', ${event.membersRequired}, ${event.enrolledMembers})" ${isFull ? 'disabled' : ''}>
-                            ${isFull ? 'Full' : 'Enroll'}
-                        </button>
-                        <button class="delete-btn" onclick="deleteEvent('${event.id}')">Delete</button>
+                    <div class="event-footer">
+                        <span class="spots-left ${isFull ? 'spots-full' : ''}">
+                            ${isFull ? 'Event Full' : `${spotsLeft} spots left`}
+                        </span>
+                        <div class="event-actions">
+                            <button class="enroll-btn" onclick="openEnrollModal('${event.id}', '${event.eventName}', '${event.date}', ${event.membersRequired}, ${event.enrolledMembers})" ${isFull ? 'disabled' : ''}>
+                                ${isFull ? 'Full' : 'Enroll'}
+                            </button>
+                            <button class="delete-btn" onclick="deleteEvent('${event.id}')">×</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -208,3 +214,77 @@ async function deleteEvent(eventId) {
 
 // Load events on page load
 fetchEvents();
+
+
+// Animated Background Canvas
+const canvas = document.getElementById('bg-canvas');
+const ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+class Particle {
+    constructor() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 3 + 1;
+        this.speedX = Math.random() * 0.5 - 0.25;
+        this.speedY = Math.random() * 0.5 - 0.25;
+        this.opacity = Math.random() * 0.5 + 0.2;
+    }
+
+    update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+
+        if (this.x > canvas.width) this.x = 0;
+        if (this.x < 0) this.x = canvas.width;
+        if (this.y > canvas.height) this.y = 0;
+        if (this.y < 0) this.y = canvas.height;
+    }
+
+    draw() {
+        ctx.fillStyle = `rgba(225, 59, 46, ${this.opacity})`;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+    }
+}
+
+const particles = [];
+for (let i = 0; i < 80; i++) {
+    particles.push(new Particle());
+}
+
+function animateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    for (let i = 0; i < particles.length; i++) {
+        particles[i].update();
+        particles[i].draw();
+        
+        for (let j = i + 1; j < particles.length; j++) {
+            const dx = particles[i].x - particles[j].x;
+            const dy = particles[i].y - particles[j].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 120) {
+                ctx.strokeStyle = `rgba(225, 59, 46, ${0.15 * (1 - distance / 120)})`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(particles[i].x, particles[i].y);
+                ctx.lineTo(particles[j].x, particles[j].y);
+                ctx.stroke();
+            }
+        }
+    }
+    
+    requestAnimationFrame(animateParticles);
+}
+
+animateParticles();
