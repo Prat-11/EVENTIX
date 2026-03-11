@@ -1,4 +1,6 @@
-// script.js
+const API_URL = 'http://localhost:5000/api';
+
+// Background animation
 (function() {
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
@@ -13,7 +15,6 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // very subtle moving gradient (similar to your dark theme with a hint of red)
     let time = 0;
     function draw() {
         if (!ctx) return;
@@ -25,7 +26,6 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        // faint red glow (moving)
         const x = Math.sin(time) * 100 + width * 0.3;
         const y = Math.cos(time * 0.7) * 70 + height * 0.6;
         const radGrad = ctx.createRadialGradient(x, y, 50, x + 100, y + 80, 400);
@@ -38,3 +38,60 @@
     }
     draw();
 })();
+
+// Form handling
+const form = document.querySelector('form');
+const nameInput = document.querySelector('input[type="text"]');
+const emailInput = document.querySelector('input[type="email"]');
+const passwordInput = document.querySelectorAll('input[type="password"]')[0];
+const confirmPasswordInput = document.querySelectorAll('input[type="password"]')[1];
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const name = nameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+    
+    // Validation
+    if (!name || !email || !password || !confirmPassword) {
+        alert('Please fill in all fields');
+        return;
+    }
+    
+    if (password !== confirmPassword) {
+        alert('Passwords do not match');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('Password must be at least 6 characters');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_URL}/users/register`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name, email, password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('Account created successfully! Redirecting to login...');
+            // Store user data
+            localStorage.setItem('user', JSON.stringify(data.data));
+            // Redirect to events page
+            window.location.href = 'currevents.html';
+        } else {
+            alert('Registration failed: ' + data.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error creating account. Please try again.');
+    }
+});

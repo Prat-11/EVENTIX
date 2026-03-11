@@ -21,6 +21,123 @@ const db = admin.firestore();
 app.use(cors());
 app.use(express.json());
 
+// ============ USER ROUTES ============
+
+// Register new user
+app.post('/api/users/register', async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+    
+    if (!name || !email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+    
+    // Check if user already exists
+    const existingUser = await db.collection('users')
+      .where('email', '==', email)
+      .get();
+    
+    if (!existingUser.empty) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'User already exists' 
+      });
+    }
+    
+    // Create user (in production, hash the password!)
+    const newUser = {
+      name,
+      email,
+      password, // WARNING: In production, use bcrypt to hash passwords!
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    
+    const docRef = await db.collection('users').add(newUser);
+    
+    res.status(201).json({ 
+      success: true, 
+      data: { 
+        id: docRef.id, 
+        name, 
+        email 
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Login user
+app.post('/api/users/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email and password are required' 
+      });
+    }
+    
+    const usersSnapshot = await db.collection('users')
+      .where('email', '==', email)
+      .where('password', '==', password)
+      .get();
+    
+    if (usersSnapshot.empty) {
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid credentials' 
+      });
+    }
+    
+    const userDoc = usersSnapshot.docs[0];
+    const userData = userDoc.data();
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        id: userDoc.id, 
+        name: userData.name, 
+        email: userData.email 
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get user profile
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const userDoc = await db.collection('users').doc(req.params.id).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    const userData = userDoc.data();
+    res.json({ 
+      success: true, 
+      data: { 
+        id: userDoc.id, 
+        name: userData.name, 
+        email: userData.email 
+      } 
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ EVENT ROUTES ============
+
 // Get all events
 app.get('/api/events', async (req, res) => {
   try {
@@ -73,18 +190,29 @@ app.post('/api/events', async (req, res) => {
   }
 });
 
-// Enroll in event
+// Enroll in event (with user authentication)
 app.post('/api/events/:id/enroll', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userName, userEmail } = req.body;
+    const { userId } = req.body;
     
-    if (!userName || !userEmail) {
+    if (!userId) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Name and email are required' 
+        error: 'User must be logged in to enroll' 
       });
     }
+    
+    // Get user data
+    const userDoc = await db.collection('users').doc(userId).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    const userData = userDoc.data();
     
     const eventRef = db.collection('events').doc(id);
     const eventDoc = await eventRef.get();
@@ -98,6 +226,14 @@ app.post('/api/events/:id/enroll', async (req, res) => {
     
     const eventData = eventDoc.data();
     
+    // Check if already enrolled
+    if (eventData.enrollments && eventData.enrollments.some(e => e.userId === userId)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Already enrolled in this event' 
+      });
+    }
+    
     if (eventData.enrolledMembers >= eventData.membersRequired) {
       return res.status(400).json({ 
         success: false, 
@@ -106,8 +242,9 @@ app.post('/api/events/:id/enroll', async (req, res) => {
     }
     
     const enrollment = {
-      userName,
-      userEmail,
+      userId,
+      userName: userData.name,
+      userEmail: userData.email,
       enrolledAt: new Date().toISOString()
     };
     
