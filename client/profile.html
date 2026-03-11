@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eventix · profile settings</title>
+    <!-- Font Awesome 6 (free) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- CSS Link -->
+    <link rel="stylesheet" href="profile.css">
+</head>
+<body>
+    <canvas id="bg-canvas"></canvas>
+    <div class="content-wrapper">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="logo">eventix<span>.</span></div>
+            <div class="nav-links">
+                <a href="index.html">events</a>
+                <a href="#">explore</a>
+                <a href="#">for you</a>
+                <a href="profile.html" class="btn-outline"><i class="fa-regular fa-user"></i> profile</a>
+            </div>
+        </nav>
+
+        <!-- Profile Section -->
+        <div class="profile-container">
+            <div class="profile-header">
+                <h1><i class="fa-regular fa-id-card"></i> profile settings</h1>
+                <p>manage your personal information – email is read-only for security</p>
+            </div>
+
+            <div class="profile-card">
+                <form id="profileForm">
+                    <!-- Avatar Section (editable via upload) -->
+                    <div class="avatar-section">
+                        <div class="avatar-wrapper">
+                            <img src="https://ui-avatars.com/api/?name=Alex+Morgan&size=128&background=e13b2e&color=fff&rounded=true" alt="profile avatar" id="avatarPreview">
+                            <div class="avatar-overlay" id="avatarUploadBtn">
+                                <i class="fa-solid fa-camera"></i>
+                                <span>change</span>
+                            </div>
+                        </div>
+                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                        <p class="avatar-hint">click to upload new photo</p>
+                    </div>
+
+                    <!-- Form Fields -->
+                    <div class="form-grid">
+                        <!-- Full Name (editable) -->
+                        <div class="form-group">
+                            <label for="fullName"><i class="fa-regular fa-user"></i> full name</label>
+                            <input type="text" id="fullName" name="fullName" value="Alex Morgan" placeholder="Enter your full name">
+                        </div>
+
+                        <!-- Email (read-only) -->
+                        <div class="form-group">
+                            <label for="email"><i class="fa-regular fa-envelope"></i> email address <span class="read-only-badge">read only</span></label>
+                            <input type="email" id="email" name="email" value="alex.morgan@eventix.com" readonly class="readonly-field">
+                        </div>
+
+                        <!-- Phone Number (editable) -->
+                        <div class="form-group">
+                            <label for="phone"><i class="fa-regular fa-phone"></i> phone number</label>
+                            <input type="tel" id="phone" name="phone" value="+1 (555) 123-4567" placeholder="Enter your phone number">
+                        </div>
+
+                        <!-- Date of Birth (editable) -->
+                        <div class="form-group">
+                            <label for="dob"><i class="fa-regular fa-calendar"></i> date of birth</label>
+                            <input type="date" id="dob" name="dob" value="1995-06-15">
+                        </div>
+
+                        <!-- Location (editable) -->
+                        <div class="form-group">
+                            <label for="location"><i class="fa-regular fa-location-dot"></i> location</label>
+                            <input type="text" id="location" name="location" value="New York, NY" placeholder="City, State">
+                        </div>
+
+                        <!-- Bio (editable - textarea) -->
+                        <div class="form-group full-width">
+                            <label for="bio"><i class="fa-regular fa-message"></i> bio</label>
+                            <textarea id="bio" name="bio" rows="4" placeholder="Tell us about yourself...">Music enthusiast, event organizer, and comedy lover. Always looking for the next great experience!</textarea>
+                        </div>
+
+                        <!-- Interests (editable - checkboxes) -->
+                        <div class="form-group full-width">
+                            <label><i class="fa-regular fa-heart"></i> interests (select all that apply)</label>
+                            <div class="interests-grid">
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="concerts" checked> <span>concerts</span>
+                                </label>
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="comedy" checked> <span>comedy</span>
+                                </label>
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="workshops"> <span>workshops</span>
+                                </label>
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="food" checked> <span>food & drink</span>
+                                </label>
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="theatre"> <span>theatre</span>
+                                </label>
+                                <label class="interest-check">
+                                    <input type="checkbox" name="interests" value="sports"> <span>sports</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Notification Preferences (editable - radio) -->
+                        <div class="form-group full-width">
+                            <label><i class="fa-regular fa-bell"></i> notification preferences</label>
+                            <div class="radio-group">
+                                <label class="radio-option">
+                                    <input type="radio" name="notifications" value="all" checked> <span>all notifications</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="notifications" value="important"> <span>important only</span>
+                                </label>
+                                <label class="radio-option">
+                                    <input type="radio" name="notifications" value="none"> <span>none</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="cancelBtn"><i class="fa-regular fa-xmark"></i> cancel</button>
+                        <button type="submit" class="btn-primary" id="saveBtn"><i class="fa-regular fa-floppy-disk"></i> save changes</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Danger Zone (optional, for account management) -->
+            <div class="danger-zone">
+                <h3><i class="fa-regular fa-triangle-exclamation"></i> account management</h3>
+                <div class="danger-actions">
+                    <button class="btn-outline-danger" id="changePasswordBtn"><i class="fa-regular fa-lock"></i> change password</button>
+                    <button class="btn-outline-danger" id="deactivateBtn"><i class="fa-regular fa-circle-xmark"></i> deactivate account</button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>eventix · 2025 · discover the extraordinary ✦</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Link -->
+    <script src="profile.js"></script>
+</body>
+</html>
