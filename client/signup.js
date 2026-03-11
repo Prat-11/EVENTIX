@@ -82,11 +82,16 @@ form.addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
-            alert('Account created successfully! Redirecting to login...');
-            // Store user data
+            alert('Account created successfully! Redirecting...');
+            // Store user data (including isAdmin)
             localStorage.setItem('user', JSON.stringify(data.data));
-            // Redirect to events page
-            window.location.href = 'currevents.html';
+            
+            // Redirect based on admin status
+            if (data.data.isAdmin) {
+                window.location.href = 'admin.html';
+            } else {
+                window.location.href = 'currevents.html';
+            }
         } else {
             alert('Registration failed: ' + data.error);
         }

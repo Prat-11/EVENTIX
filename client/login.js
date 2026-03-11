@@ -69,11 +69,16 @@ loginForm.addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
-            // Store user data
+            // Store user data (including isAdmin)
             localStorage.setItem('user', JSON.stringify(data.data));
             alert('Login successful!');
-            // Redirect to events page
-            window.location.href = 'currevents.html';
+            
+            // Redirect based on admin status
+            if (data.data.isAdmin) {
+                window.location.href = 'admin.html';
+            } else {
+                window.location.href = 'currevents.html';
+            }
         } else {
             alert('Login failed: ' + data.error);
         }
