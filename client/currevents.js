@@ -1,6 +1,6 @@
 const API_URL = 'http://localhost:5000/api';
 
-// Check if user is logged in
+
 let currentUser = null;
 try {
     const userData = localStorage.getItem('user');
@@ -11,7 +11,7 @@ try {
     console.error('Error loading user data:', error);
 }
 
-// Update sign in button
+
 window.addEventListener('DOMContentLoaded', () => {
     const signInBtn = document.querySelector('.sign-in-btn');
     if (currentUser) {
@@ -29,7 +29,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// DOM Elements
+
 const createBtn = document.getElementById('createBtn');
 const createModal = document.getElementById('createModal');
 const enrollModal = document.getElementById('enrollModal');
@@ -41,7 +41,7 @@ const eventsGrid = document.getElementById('eventsGrid');
 
 let selectedEventId = null;
 
-// Modal Controls
+
 createBtn.addEventListener('click', () => {
     createModal.style.display = 'block';
 });
@@ -63,7 +63,7 @@ window.addEventListener('click', (e) => {
     }
 });
 
-// Fetch and Display Events
+
 async function fetchEvents() {
     try {
         const response = await fetch(`${API_URL}/events`);
@@ -132,7 +132,7 @@ function displayEvents(events) {
     }).join('');
 }
 
-// Create Event
+
 createEventForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -168,9 +168,9 @@ createEventForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Open Enroll Modal
+
 function openEnrollModal(eventId, eventName, date, required, enrolled) {
-    // Check if user is logged in
+    
     if (!currentUser) {
         alert('Please sign in to enroll in events');
         window.location.href = 'signup.html';
@@ -194,7 +194,7 @@ function openEnrollModal(eventId, eventName, date, required, enrolled) {
     enrollModal.style.display = 'block';
 }
 
-// Enroll in Event
+
 enrollForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -230,7 +230,7 @@ enrollForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Delete Event
+
 async function deleteEvent(eventId) {
     if (!confirm('Are you sure you want to delete this event?')) {
         return;
@@ -255,11 +255,11 @@ async function deleteEvent(eventId) {
     }
 }
 
-// Load events on page load
+
 fetchEvents();
 
 
-// Animated Background Canvas
+
 const canvas = document.getElementById('bg-canvas');
 const ctx = canvas.getContext('2d');
 

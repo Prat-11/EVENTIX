@@ -1,13 +1,13 @@
 const API_URL = 'http://localhost:5000/api';
 
-// Check if user is admin
+
 let currentUser = null;
 try {
     const userData = localStorage.getItem('user');
     if (userData) {
         currentUser = JSON.parse(userData);
-        console.log('Current user:', currentUser); // Debug log
-        // Check if admin
+        console.log('Current user:', currentUser); 
+        
         if (!currentUser.isAdmin) {
             alert('Access denied. Admin privileges required.');
             window.location.href = 'home.html';
@@ -21,7 +21,7 @@ try {
     window.location.href = 'login.html';
 }
 
-// Background animation
+
 (function() {
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
@@ -87,7 +87,7 @@ try {
     drawParticles();
 })();
 
-// Logout
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
     if (confirm('Are you sure you want to logout?')) {
         localStorage.removeItem('user');
@@ -95,7 +95,7 @@ document.getElementById('logoutBtn').addEventListener('click', () => {
     }
 });
 
-// Tab switching
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -106,7 +106,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// Load stats
+
 async function loadStats() {
     try {
         console.log('Loading stats...');
@@ -152,7 +152,7 @@ async function loadStats() {
     }
 }
 
-// Load users
+
 async function loadUsers() {
     try {
         console.log('Loading users...');
@@ -200,7 +200,7 @@ function displayUsers(users) {
     `).join('');
 }
 
-// Load events
+
 async function loadEvents() {
     try {
         console.log('Loading events...');
@@ -247,7 +247,7 @@ function displayEvents(events) {
     }).join('');
 }
 
-// User actions
+
 async function blockUser(userId) {
     if (!confirm('Are you sure you want to block this user?')) return;
     
@@ -317,7 +317,7 @@ async function deleteUser(userId) {
     }
 }
 
-// Event actions
+
 async function deleteEvent(eventId) {
     if (!confirm('Are you sure you want to delete this event? This action cannot be undone.')) return;
     
@@ -341,7 +341,7 @@ async function deleteEvent(eventId) {
     }
 }
 
-// Search functionality
+
 document.getElementById('userSearch').addEventListener('input', (e) => {
     const searchTerm = e.target.value.toLowerCase();
     const rows = document.querySelectorAll('#usersTableBody tr');
@@ -362,7 +362,7 @@ document.getElementById('eventSearch').addEventListener('input', (e) => {
     });
 });
 
-// Load data on page load
+
 loadStats();
 loadUsers();
 loadEvents();

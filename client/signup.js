@@ -1,6 +1,6 @@
 const API_URL = 'http://localhost:5000/api';
 
-// Background animation
+
 (function() {
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
@@ -39,7 +39,7 @@ const API_URL = 'http://localhost:5000/api';
     draw();
 })();
 
-// Form handling
+
 const form = document.querySelector('form');
 const nameInput = document.querySelector('input[type="text"]');
 const emailInput = document.querySelector('input[type="email"]');
@@ -54,7 +54,7 @@ form.addEventListener('submit', async (e) => {
     const password = passwordInput.value;
     const confirmPassword = confirmPasswordInput.value;
     
-    // Validation
+    
     if (!name || !email || !password || !confirmPassword) {
         alert('Please fill in all fields');
         return;
@@ -83,10 +83,10 @@ form.addEventListener('submit', async (e) => {
         
         if (data.success) {
             alert('Account created successfully! Redirecting...');
-            // Store user data (including isAdmin)
+            
             localStorage.setItem('user', JSON.stringify(data.data));
             
-            // Redirect based on admin status
+            
             if (data.data.isAdmin) {
                 window.location.href = 'admin.html';
             } else {

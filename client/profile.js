@@ -1,13 +1,13 @@
 const API_URL = 'http://localhost:5000/api';
 
-// Check if user is logged in
+
 let currentUser = null;
 try {
     const userData = localStorage.getItem('user');
     if (userData) {
         currentUser = JSON.parse(userData);
     } else {
-        // Redirect to login if not logged in
+        
         window.location.href = 'login.html';
     }
 } catch (error) {
@@ -16,7 +16,7 @@ try {
 }
 
 (function() {
-    // ========== ANIMATED BACKGROUND ==========
+    
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
     let width, height;
@@ -103,7 +103,7 @@ try {
     resizeCanvas();
     drawParticles();
 
-    // ========== PROFILE PAGE FUNCTIONALITY ==========
+    
     
     const avatarUploadBtn = document.getElementById('avatarUploadBtn');
     const avatarInput = document.getElementById('avatarInput');
@@ -112,7 +112,7 @@ try {
     const saveBtn = document.getElementById('saveBtn');
     const cancelBtn = document.getElementById('cancelBtn');
 
-    // Load user profile from backend
+    
     async function loadUserProfile() {
         try {
             const response = await fetch(`${API_URL}/users/${currentUser.id}`);
@@ -121,7 +121,7 @@ try {
             if (data.success) {
                 const profile = data.data;
                 
-                // Set form fields
+                
                 document.getElementById('fullName').value = profile.name || '';
                 document.getElementById('email').value = profile.email || '';
                 document.getElementById('phone').value = profile.phone || '';
@@ -129,19 +129,19 @@ try {
                 document.getElementById('location').value = profile.location || '';
                 document.getElementById('bio').value = profile.bio || '';
                 
-                // Set avatar
+                
                 if (profile.avatar) {
                     avatarPreview.src = profile.avatar;
                 }
                 
-                // Set interests
+                
                 if (profile.interests && profile.interests.length > 0) {
                     document.querySelectorAll('input[name="interests"]').forEach(cb => {
                         cb.checked = profile.interests.includes(cb.value);
                     });
                 }
                 
-                // Set notifications
+                
                 if (profile.notifications) {
                     const radio = document.querySelector(`input[name="notifications"][value="${profile.notifications}"]`);
                     if (radio) radio.checked = true;
@@ -153,7 +153,7 @@ try {
         }
     }
 
-    // Avatar upload
+    
     avatarUploadBtn.addEventListener('click', () => {
         avatarInput.click();
     });
@@ -170,7 +170,7 @@ try {
         }
     });
 
-    // Save profile
+    
     async function saveProfileData() {
         const interests = [];
         document.querySelectorAll('input[name="interests"]:checked').forEach(cb => {
@@ -202,7 +202,7 @@ try {
             const data = await response.json();
             
             if (data.success) {
-                // Update localStorage
+                
                 currentUser.name = profileData.name;
                 currentUser.avatar = profileData.avatar;
                 localStorage.setItem('user', JSON.stringify(currentUser));
@@ -278,7 +278,7 @@ try {
         }
     });
 
-    // Danger zone actions
+    
     const changePasswordBtn = document.getElementById('changePasswordBtn');
     const deactivateBtn = document.getElementById('deactivateBtn');
 
@@ -293,6 +293,6 @@ try {
         }
     });
 
-    // Load profile on page load
+    
     loadUserProfile();
 })();

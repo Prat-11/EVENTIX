@@ -1,6 +1,6 @@
 const API_URL = 'http://localhost:5000/api';
 
-// Background animation
+
 (function() {
     const canvas = document.getElementById('bg-canvas');
     const ctx = canvas.getContext('2d');
@@ -15,7 +15,7 @@ const API_URL = 'http://localhost:5000/api';
     window.addEventListener('resize', resize);
     resize();
 
-    // very subtle moving gradient
+    
     let time = 0;
     function draw() {
         if (!ctx) return;
@@ -27,7 +27,7 @@ const API_URL = 'http://localhost:5000/api';
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        // faint red glow (moving)
+        
         const x = Math.sin(time) * 100 + width * 0.3;
         const y = Math.cos(time * 0.7) * 70 + height * 0.6;
         const radGrad = ctx.createRadialGradient(x, y, 50, x + 100, y + 80, 400);
@@ -41,7 +41,7 @@ const API_URL = 'http://localhost:5000/api';
     draw();
 })();
 
-// Login form handling
+
 const loginForm = document.getElementById('loginForm');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -69,11 +69,11 @@ loginForm.addEventListener('submit', async (e) => {
         const data = await response.json();
         
         if (data.success) {
-            // Store user data (including isAdmin)
+            
             localStorage.setItem('user', JSON.stringify(data.data));
             alert('Login successful!');
             
-            // Redirect based on admin status
+            
             if (data.data.isAdmin) {
                 window.location.href = 'admin.html';
             } else {

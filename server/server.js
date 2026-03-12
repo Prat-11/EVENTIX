@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 const app = express();
 const PORT = 5000;
 
-// Initialize Firebase Admin
+
 const serviceAccount = JSON.parse(
   readFileSync('./fireb-sdk.json', 'utf8')
 );
@@ -17,13 +17,12 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-// Middleware
+
 app.use(cors());
 app.use(express.json());
 
-// ============ USER ROUTES ============
 
-// Register new user
+
 app.post('/api/users/register', async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -35,7 +34,7 @@ app.post('/api/users/register', async (req, res) => {
       });
     }
     
-    // Check if user already exists
+    
     const existingUser = await db.collection('users')
       .where('email', '==', email)
       .get();
@@ -47,11 +46,11 @@ app.post('/api/users/register', async (req, res) => {
       });
     }
     
-    // Create user (in production, hash the password!)
+    
     const newUser = {
       name,
       email,
-      password, // WARNING: In production, use bcrypt to hash passwords!
+      password, 
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=128&background=e13b2e&color=fff&rounded=true`,
       phone: '',
       dob: '',
@@ -60,7 +59,7 @@ app.post('/api/users/register', async (req, res) => {
       interests: [],
       notifications: 'all',
       blocked: false,
-      isAdmin: email === 'admin@eventix.com', // Make first admin
+      isAdmin: email === 'admin@eventix.com', 
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     
@@ -81,7 +80,7 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
-// Login user
+
 app.post('/api/users/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -108,7 +107,7 @@ app.post('/api/users/login', async (req, res) => {
     const userDoc = usersSnapshot.docs[0];
     const userData = userDoc.data();
     
-    // Check if user is blocked
+    
     if (userData.blocked) {
       return res.status(403).json({ 
         success: false, 
@@ -131,7 +130,7 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
-// Get user profile
+
 app.get('/api/users/:id', async (req, res) => {
   try {
     const userDoc = await db.collection('users').doc(req.params.id).get();
@@ -144,7 +143,7 @@ app.get('/api/users/:id', async (req, res) => {
     }
     
     const userData = userDoc.data();
-    // Don't send password
+    
     delete userData.password;
     
     res.json({ 
@@ -159,7 +158,7 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// Update user profile
+
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { name, avatar, phone, dob, location, bio, interests, notifications } = req.body;
@@ -188,9 +187,9 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-// ============ ADMIN ROUTES ============
 
-// Make user admin (temporary endpoint for setup)
+
+
 app.post('/api/admin/make-admin', async (req, res) => {
   try {
     const { email } = req.body;
@@ -217,7 +216,7 @@ app.post('/api/admin/make-admin', async (req, res) => {
   }
 });
 
-// Get all users (admin only)
+
 app.get('/api/admin/users', async (req, res) => {
   try {
     const usersSnapshot = await db.collection('users').get();
@@ -225,7 +224,7 @@ app.get('/api/admin/users', async (req, res) => {
     
     usersSnapshot.forEach(doc => {
       const userData = doc.data();
-      delete userData.password; // Don't send passwords
+      delete userData.password; 
       users.push({
         id: doc.id,
         ...userData
@@ -238,7 +237,7 @@ app.get('/api/admin/users', async (req, res) => {
   }
 });
 
-// Get all events (admin only)
+
 app.get('/api/admin/events', async (req, res) => {
   try {
     const eventsSnapshot = await db.collection('events').get();
@@ -257,7 +256,7 @@ app.get('/api/admin/events', async (req, res) => {
   }
 });
 
-// Block user
+
 app.put('/api/admin/users/:id/block', async (req, res) => {
   try {
     await db.collection('users').doc(req.params.id).update({
@@ -271,7 +270,7 @@ app.put('/api/admin/users/:id/block', async (req, res) => {
   }
 });
 
-// Unblock user
+
 app.put('/api/admin/users/:id/unblock', async (req, res) => {
   try {
     await db.collection('users').doc(req.params.id).update({
@@ -285,7 +284,7 @@ app.put('/api/admin/users/:id/unblock', async (req, res) => {
   }
 });
 
-// Delete user
+
 app.delete('/api/admin/users/:id', async (req, res) => {
   try {
     await db.collection('users').doc(req.params.id).delete();
@@ -295,9 +294,9 @@ app.delete('/api/admin/users/:id', async (req, res) => {
   }
 });
 
-// ============ EVENT ROUTES ============
 
-// Get all events
+
+
 app.get('/api/events', async (req, res) => {
   try {
     const eventsSnapshot = await db.collection('events').get();
@@ -316,7 +315,7 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// Create new event
+
 app.post('/api/events', async (req, res) => {
   try {
     const { organizerName, eventName, date, membersRequired } = req.body;
@@ -349,7 +348,7 @@ app.post('/api/events', async (req, res) => {
   }
 });
 
-// Enroll in event (with user authentication)
+
 app.post('/api/events/:id/enroll', async (req, res) => {
   try {
     const { id } = req.params;
@@ -362,7 +361,7 @@ app.post('/api/events/:id/enroll', async (req, res) => {
       });
     }
     
-    // Get user data
+    
     const userDoc = await db.collection('users').doc(userId).get();
     if (!userDoc.exists) {
       return res.status(404).json({ 
@@ -385,7 +384,7 @@ app.post('/api/events/:id/enroll', async (req, res) => {
     
     const eventData = eventDoc.data();
     
-    // Check if already enrolled
+    
     if (eventData.enrollments && eventData.enrollments.some(e => e.userId === userId)) {
       return res.status(400).json({ 
         success: false, 
@@ -421,7 +420,7 @@ app.post('/api/events/:id/enroll', async (req, res) => {
   }
 });
 
-// Delete event
+
 app.delete('/api/events/:id', async (req, res) => {
   try {
     await db.collection('events').doc(req.params.id).delete();
