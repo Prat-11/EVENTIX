@@ -59,6 +59,8 @@ app.post('/api/users/register', async (req, res) => {
       bio: '',
       interests: [],
       notifications: 'all',
+      blocked: false,
+      isAdmin: email === 'admin@eventix.com', // Make first admin
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
     
@@ -70,7 +72,8 @@ app.post('/api/users/register', async (req, res) => {
         id: docRef.id, 
         name, 
         email,
-        avatar: newUser.avatar
+        avatar: newUser.avatar,
+        isAdmin: newUser.isAdmin
       } 
     });
   } catch (error) {
@@ -105,13 +108,22 @@ app.post('/api/users/login', async (req, res) => {
     const userDoc = usersSnapshot.docs[0];
     const userData = userDoc.data();
     
+    // Check if user is blocked
+    if (userData.blocked) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Your account has been blocked. Please contact support.' 
+      });
+    }
+    
     res.json({ 
       success: true, 
       data: { 
         id: userDoc.id, 
         name: userData.name, 
         email: userData.email,
-        avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&size=128&background=e13b2e&color=fff&rounded=true`
+        avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&size=128&background=e13b2e&color=fff&rounded=true`,
+        isAdmin: userData.isAdmin || false
       } 
     });
   } catch (error) {
@@ -171,6 +183,113 @@ app.put('/api/users/:id', async (req, res) => {
       success: true, 
       message: 'Profile updated successfully' 
     });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ ADMIN ROUTES ============
+
+// Make user admin (temporary endpoint for setup)
+app.post('/api/admin/make-admin', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    const usersSnapshot = await db.collection('users')
+      .where('email', '==', email)
+      .get();
+    
+    if (usersSnapshot.empty) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+    
+    const userDoc = usersSnapshot.docs[0];
+    await db.collection('users').doc(userDoc.id).update({
+      isAdmin: true
+    });
+    
+    res.json({ success: true, message: 'User is now admin' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get all users (admin only)
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const usersSnapshot = await db.collection('users').get();
+    const users = [];
+    
+    usersSnapshot.forEach(doc => {
+      const userData = doc.data();
+      delete userData.password; // Don't send passwords
+      users.push({
+        id: doc.id,
+        ...userData
+      });
+    });
+    
+    res.json({ success: true, data: users });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get all events (admin only)
+app.get('/api/admin/events', async (req, res) => {
+  try {
+    const eventsSnapshot = await db.collection('events').get();
+    const events = [];
+    
+    eventsSnapshot.forEach(doc => {
+      events.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    res.json({ success: true, data: events });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Block user
+app.put('/api/admin/users/:id/block', async (req, res) => {
+  try {
+    await db.collection('users').doc(req.params.id).update({
+      blocked: true,
+      blockedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    res.json({ success: true, message: 'User blocked successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Unblock user
+app.put('/api/admin/users/:id/unblock', async (req, res) => {
+  try {
+    await db.collection('users').doc(req.params.id).update({
+      blocked: false,
+      unblockedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    res.json({ success: true, message: 'User unblocked successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete user
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    await db.collection('users').doc(req.params.id).delete();
+    res.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }
