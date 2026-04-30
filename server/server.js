@@ -1,435 +1,399 @@
-import express from 'express';
-import cors from 'cors';
-import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
+/**
+ * server.js — Eventix · Single-file backend
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Everything lives here:
+ *   • Firebase / Firestore (only DB)
+ *   • Middleware lifecycle  (application-level, router-level, error-handling,
+ *                            third-party)
+ *   • Body-parser  (express.json / urlencoded — non-blocking stream)
+ *   • Bcrypt       (password hashing — runs in libuv thread pool, non-blocking)
+ *   • JWT          (stateless API auth)
+ *   • express-session + cookie-parser  (session management & cookies)
+ *   • Passport.js  (LocalStrategy + JwtStrategy)
+ *   • Socket.io    (full-duplex real-time — live seat counts, live dashboard)
+ *   • EJS          (SSR template engine — /ssr/* routes)
+ *   • Morgan       (HTTP logger — third-party middleware)
+ *   • Helmet       (security headers — third-party middleware)
+ *   • Compression  (gzip — third-party middleware)
+ *   • Rate-limiter (express-rate-limit — third-party middleware)
+ *
+ * HOW A REQUEST TRAVELS THROUGH EXPRESS
+ * ──────────────────────────────────────
+ * Client → helmet → cors → compression → morgan → rateLimiter
+ *        → cookieParser → bodyParser → session → passport.init
+ *        → passport.session → requestMeta → [Router] → errorHandler
+ *
+ * BLOCKING vs NON-BLOCKING
+ * ─────────────────────────
+ * Blocking  : initFirebase() — runs once at startup, before listen()
+ * Non-blocking: every Firestore call returns a Promise; bcrypt uses libuv
+ *               thread pool; socket.io shares the event loop
+ */
 
-const app = express();
-const PORT = 5000;
+import express          from 'express';
+import { createServer } from 'http';
+import { Server as IO } from 'socket.io';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { readFileSync }  from 'fs';
 
+// ── Third-party middleware ────────────────────────────────────────────────────
+import cors         from 'cors';
+import helmet       from 'helmet';
+import compression  from 'compression';
+import morgan       from 'morgan';
+import rateLimit    from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
+import session      from 'express-session';
+import passport     from 'passport';
+import { Strategy as LocalStrategy } from 'passport-local';
+import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
+import bcrypt       from 'bcryptjs';
+import jwt          from 'jsonwebtoken';
+import admin        from 'firebase-admin';
+import dotenv       from 'dotenv';
 
-const serviceAccount = JSON.parse(
-  readFileSync('./fireb-sdk.json', 'utf8')
-);
+dotenv.config();
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const PORT           = process.env.PORT           || 3000;
+const JWT_SECRET     = process.env.JWT_SECRET     || 'eventix_jwt_dev_secret';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'eventix_session_dev_secret';
+const __dirname      = dirname(fileURLToPath(import.meta.url));
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FIREBASE INIT  (synchronous — runs once before listen())
+// ─────────────────────────────────────────────────────────────────────────────
+const serviceAccount = JSON.parse(readFileSync('./fireb-sdk.json', 'utf8'));
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
+console.log('✅  Firebase / Firestore connected');
 
-
-app.use(cors());
-app.use(express.json());
-
-
-
-app.post('/api/users/register', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    
-    if (!name || !email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-    
-    
-    const existingUser = await db.collection('users')
-      .where('email', '==', email)
-      .get();
-    
-    if (!existingUser.empty) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'User already exists' 
-      });
-    }
-    
-    
-    const newUser = {
-      name,
-      email,
-      password, 
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=128&background=e13b2e&color=fff&rounded=true`,
-      phone: '',
-      dob: '',
-      location: '',
-      bio: '',
-      interests: [],
-      notifications: 'all',
-      blocked: false,
-      isAdmin: email === 'admin@eventix.com', 
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    const docRef = await db.collection('users').add(newUser);
-    
-    res.status(201).json({ 
-      success: true, 
-      data: { 
-        id: docRef.id, 
-        name, 
-        email,
-        avatar: newUser.avatar,
-        isAdmin: newUser.isAdmin
-      } 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPRESS + HTTP SERVER + SOCKET.IO
+// ─────────────────────────────────────────────────────────────────────────────
+const app        = express();
+const httpServer = createServer(app);
+const io         = new IO(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PASSPORT STRATEGIES
+// ─────────────────────────────────────────────────────────────────────────────
 
-app.post('/api/users/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email and password are required' 
-      });
-    }
-    
-    const usersSnapshot = await db.collection('users')
-      .where('email', '==', email)
-      .where('password', '==', password)
-      .get();
-    
-    if (usersSnapshot.empty) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Invalid credentials' 
-      });
-    }
-    
-    const userDoc = usersSnapshot.docs[0];
-    const userData = userDoc.data();
-    
-    
-    if (userData.blocked) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Your account has been blocked. Please contact support.' 
-      });
-    }
-    
-    res.json({ 
-      success: true, 
-      data: { 
-        id: userDoc.id, 
-        name: userData.name, 
-        email: userData.email,
-        avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name)}&size=128&background=e13b2e&color=fff&rounded=true`,
-        isAdmin: userData.isAdmin || false
-      } 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+// LocalStrategy — email + bcrypt check against Firestore
+passport.use(new LocalStrategy(
+  { usernameField: 'email', passwordField: 'password' },
+  async (email, password, done) => {
+    try {
+      const snap = await db.collection('users').where('email', '==', email).get();
+      if (snap.empty) return done(null, false, { message: 'Invalid credentials' });
+
+      const doc  = snap.docs[0];
+      const user = { id: doc.id, ...doc.data() };
+
+      if (user.blocked) return done(null, false, { message: 'Account blocked' });
+
+      // bcrypt.compare is non-blocking — libuv thread pool
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) return done(null, false, { message: 'Invalid credentials' });
+
+      return done(null, user);
+    } catch (err) { return done(err); }
   }
+));
+
+// JwtStrategy — Bearer token for stateless API calls
+passport.use(new JwtStrategy(
+  { jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(), secretOrKey: JWT_SECRET },
+  async (payload, done) => {
+    try {
+      const doc = await db.collection('users').doc(payload.id).get();
+      if (!doc.exists) return done(null, false);
+      const user = { id: doc.id, ...doc.data() };
+      if (user.blocked) return done(null, false);
+      return done(null, user);
+    } catch (err) { return done(err); }
+  }
+));
+
+// Session serialisation — only store user id in cookie
+passport.serializeUser((user, done) => done(null, user.id));
+passport.deserializeUser(async (id, done) => {
+  try {
+    const doc = await db.collection('users').doc(id).get();
+    if (!doc.exists) return done(null, false);
+    done(null, { id: doc.id, ...doc.data() });
+  } catch (err) { done(err); }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RATE LIMITERS  (third-party middleware — express-rate-limit)
+// ─────────────────────────────────────────────────────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 200,
+  standardHeaders: true, legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, slow down.' },
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  standardHeaders: true, legacyHeaders: false,
+  message: { success: false, error: 'Too many login attempts.' },
+});
+const enrollLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 5,
+  message: { success: false, error: 'Enrollment rate limit hit.' },
+});
 
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const userDoc = await db.collection('users').doc(req.params.id).get();
-    
-    if (!userDoc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found' 
+// ─────────────────────────────────────────────────────────────────────────────
+// APPLICATION-LEVEL MIDDLEWARE  (runs for every request)
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(cors({ origin: '*', credentials: true, methods: ['GET','POST','PUT','DELETE','OPTIONS'] }));
+app.use(compression());                                    // gzip — non-blocking stream
+app.use(morgan('dev'));                                     // HTTP logger
+app.use('/api', apiLimiter);                               // global API rate limit
+app.use(cookieParser(SESSION_SECRET));                     // parse cookies
+
+// Body-parser — reads request stream asynchronously (non-blocking)
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Session management — server-side; only signed session ID in cookie
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,   // XSS protection
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    secure: process.env.NODE_ENV === 'production',
+  },
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Custom application-level middleware — stamp every request
+app.use((req, _res, next) => {
+  req.requestTime = new Date().toISOString();
+  req.requestId   = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  next();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EJS TEMPLATE ENGINE  (SSR)
+// ─────────────────────────────────────────────────────────────────────────────
+app.set('view engine', 'ejs');
+app.set('views', join(__dirname, 'views'));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATIC FILES  (CSR client)
+// ─────────────────────────────────────────────────────────────────────────────
+app.use(express.static(join(__dirname, '..', 'client')));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH GUARD HELPERS  (router-level middleware — used inline on routes)
+// ─────────────────────────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  passport.authenticate('jwt', { session: false }, (err, user, info) => {
+    if (err)   return next(err);
+    if (!user) return res.status(401).json({ success: false, error: info?.message || 'Unauthorised' });
+    req.user = user;
+    next();
+  })(req, res, next);
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.isAdmin) return next();
+  res.status(403).json({ success: false, error: 'Admin privileges required' });
+}
+
+// asyncHandler — wraps async routes so rejected promises hit the error handler
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── AUTH ROUTES  (router-level: authLimiter applied here only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/auth/register
+app.post('/api/auth/register', authLimiter, asyncHandler(async (req, res) => {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password)
+    return res.status(400).json({ success: false, error: 'All fields required' });
+  if (password.length < 6)
+    return res.status(400).json({ success: false, error: 'Password min 6 chars' });
+
+  const existing = await db.collection('users').where('email', '==', email).get();
+  if (!existing.empty)
+    return res.status(400).json({ success: false, error: 'Email already registered' });
+
+  // bcrypt hash — non-blocking (libuv thread pool)
+  const hashed = await bcrypt.hash(password, 12);
+
+  const newUser = {
+    name, email,
+    password: hashed,
+    avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=128&background=e13b2e&color=fff&rounded=true`,
+    phone: '', dob: '', location: '', bio: '',
+    interests: [], notifications: 'all',
+    blocked: false,
+    isAdmin: email === 'admin@eventix.com',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const docRef = await db.collection('users').add(newUser);
+  const token  = jwt.sign({ id: docRef.id, email }, JWT_SECRET, { expiresIn: '7d' });
+
+  res.status(201).json({
+    success: true,
+    data: { id: docRef.id, name, email, avatar: newUser.avatar, isAdmin: newUser.isAdmin, token },
+  });
+}));
+
+// POST /api/auth/login
+app.post('/api/auth/login', authLimiter, (req, res, next) => {
+  passport.authenticate('local', { session: true }, async (err, user, info) => {
+    if (err)   return next(err);
+    if (!user) return res.status(401).json({ success: false, error: info?.message || 'Invalid credentials' });
+
+    req.logIn(user, async (loginErr) => {
+      if (loginErr) return next(loginErr);
+
+      const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+
+      // Signed cookie — httpOnly, not accessible to JS (XSS protection)
+      res.cookie('eventix_uid', user.id, {
+        signed: true, httpOnly: true, sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        secure: process.env.NODE_ENV === 'production',
       });
-    }
-    
-    const userData = userDoc.data();
-    
-    delete userData.password;
-    
-    res.json({ 
-      success: true, 
-      data: { 
-        id: userDoc.id, 
-        ...userData
-      } 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
-
-app.put('/api/users/:id', async (req, res) => {
-  try {
-    const { name, avatar, phone, dob, location, bio, interests, notifications } = req.body;
-    
-    const updateData = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    if (name) updateData.name = name;
-    if (avatar) updateData.avatar = avatar;
-    if (phone !== undefined) updateData.phone = phone;
-    if (dob !== undefined) updateData.dob = dob;
-    if (location !== undefined) updateData.location = location;
-    if (bio !== undefined) updateData.bio = bio;
-    if (interests) updateData.interests = interests;
-    if (notifications) updateData.notifications = notifications;
-    
-    await db.collection('users').doc(req.params.id).update(updateData);
-    
-    res.json({ 
-      success: true, 
-      message: 'Profile updated successfully' 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-
-
-app.post('/api/admin/make-admin', async (req, res) => {
-  try {
-    const { email } = req.body;
-    
-    const usersSnapshot = await db.collection('users')
-      .where('email', '==', email)
-      .get();
-    
-    if (usersSnapshot.empty) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found' 
-      });
-    }
-    
-    const userDoc = usersSnapshot.docs[0];
-    await db.collection('users').doc(userDoc.id).update({
-      isAdmin: true
-    });
-    
-    res.json({ success: true, message: 'User is now admin' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-app.get('/api/admin/users', async (req, res) => {
-  try {
-    const usersSnapshot = await db.collection('users').get();
-    const users = [];
-    
-    usersSnapshot.forEach(doc => {
-      const userData = doc.data();
-      delete userData.password; 
-      users.push({
-        id: doc.id,
-        ...userData
+      res.json({
+        success: true,
+        data: { id: user.id, name: user.name, email: user.email, avatar: user.avatar, isAdmin: user.isAdmin || false, token },
       });
     });
-    
-    res.json({ success: true, data: users });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  })(req, res, next);
 });
 
-
-app.get('/api/admin/events', async (req, res) => {
-  try {
-    const eventsSnapshot = await db.collection('events').get();
-    const events = [];
-    
-    eventsSnapshot.forEach(doc => {
-      events.push({
-        id: doc.id,
-        ...doc.data()
-      });
+// POST /api/auth/logout
+app.post('/api/auth/logout', (req, res, next) => {
+  req.logout((err) => {
+    if (err) return next(err);
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid');
+      res.clearCookie('eventix_uid');
+      res.json({ success: true, message: 'Logged out' });
     });
-    
-    res.json({ success: true, data: events });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  });
 });
 
+// GET /api/auth/me
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  const { id, name, email, avatar, isAdmin } = req.user;
+  res.json({ success: true, data: { id, name, email, avatar, isAdmin } });
+});
 
-app.put('/api/admin/users/:id/block', async (req, res) => {
-  try {
-    await db.collection('users').doc(req.params.id).update({
-      blocked: true,
-      blockedAt: admin.firestore.FieldValue.serverTimestamp()
+// ─────────────────────────────────────────────────────────────────────────────
+// ── USER ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/users/:id
+app.get('/api/users/:id', asyncHandler(async (req, res) => {
+  const doc = await db.collection('users').doc(req.params.id).get();
+  if (!doc.exists) return res.status(404).json({ success: false, error: 'User not found' });
+  const data = doc.data();
+  delete data.password;
+  res.json({ success: true, data: { id: doc.id, ...data } });
+}));
+
+// PUT /api/users/:id
+app.put('/api/users/:id', requireAuth, asyncHandler(async (req, res) => {
+  if (req.user.id !== req.params.id && !req.user.isAdmin)
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+
+  const { name, avatar, phone, dob, location, bio, interests, notifications } = req.body;
+  const update = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+  if (name          != null) update.name          = name;
+  if (avatar        != null) update.avatar        = avatar;
+  if (phone         != null) update.phone         = phone;
+  if (dob           != null) update.dob           = dob;
+  if (location      != null) update.location      = location;
+  if (bio           != null) update.bio           = bio;
+  if (interests     != null) update.interests     = interests;
+  if (notifications != null) update.notifications = notifications;
+
+  await db.collection('users').doc(req.params.id).update(update);
+  res.json({ success: true, message: 'Profile updated' });
+}));
+
+// GET /api/users/:id/bookings — all events this user is enrolled in
+app.get('/api/users/:id/bookings', requireAuth, asyncHandler(async (req, res) => {
+  if (req.user.id !== req.params.id && !req.user.isAdmin)
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+
+  // Fetch all events and filter to ones where this user has an enrollment
+  const snap   = await db.collection('events').get();
+  const userId = req.params.id;
+
+  const bookings = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(ev => (ev.enrollments || []).some(e => e.userId === userId))
+    .map(ev => {
+      const enrollment = (ev.enrollments || []).find(e => e.userId === userId);
+      return {
+        eventId:        ev.id,
+        eventName:      ev.eventName,
+        organizerName:  ev.organizerName,
+        date:           ev.date,
+        category:       ev.category || 'general',
+        seats:          enrollment?.seats || (enrollment?.seat ? [enrollment.seat] : []),
+        seatCount:      enrollment?.seatCount || 1,
+        enrolledAt:     enrollment?.enrolledAt,
+        membersRequired: ev.membersRequired,
+        enrolledMembers: ev.enrolledMembers,
+      };
     });
-    
-    res.json({ success: true, message: 'User blocked successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
+  res.json({ success: true, data: bookings });
+}));
 
-app.put('/api/admin/users/:id/unblock', async (req, res) => {
-  try {
-    await db.collection('users').doc(req.params.id).update({
-      blocked: false,
-      unblockedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-    
-    res.json({ success: true, message: 'User unblocked successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// ── EVENT ROUTES
+// ─────────────────────────────────────────────────────────────────────────────
 
+// GET /api/events
+app.get('/api/events', asyncHandler(async (_req, res) => {
+  const snap   = await db.collection('events').orderBy('createdAt', 'desc').get();
+  const events = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  res.json({ success: true, data: events });
+}));
 
-app.delete('/api/admin/users/:id', async (req, res) => {
-  try {
-    await db.collection('users').doc(req.params.id).delete();
-    res.json({ success: true, message: 'User deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
+// POST /api/events
+app.post('/api/events', requireAuth, asyncHandler(async (req, res) => {
+  const { eventName, date, membersRequired, description, category } = req.body;
+  if (!eventName || !date || !membersRequired)
+    return res.status(400).json({ success: false, error: 'eventName, date, membersRequired required' });
 
+  const newEvent = {
+    organizerName:   req.user.name,
+    organizerId:     req.user.id,
+    eventName, date,
+    description:     description || '',
+    category:        category    || 'general',
+    membersRequired: parseInt(membersRequired, 10),
+    enrolledMembers: 0,
+    enrollments:     [],
+    createdAt:       admin.firestore.FieldValue.serverTimestamp(),
+  };
 
-
-
-app.get('/api/events', async (req, res) => {
-  try {
-    const eventsSnapshot = await db.collection('events').get();
-    const events = [];
-    
-    eventsSnapshot.forEach(doc => {
-      events.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    res.json({ success: true, data: events });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-app.post('/api/events', async (req, res) => {
-  try {
-    const { organizerName, eventName, date, membersRequired } = req.body;
-    
-    if (!organizerName || !eventName || !date || !membersRequired) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'All fields are required' 
-      });
-    }
-    
-    const newEvent = {
-      organizerName,
-      eventName,
-      date,
-      membersRequired: parseInt(membersRequired),
-      enrolledMembers: 0,
-      enrollments: [],
-      createdAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-    
-    const docRef = await db.collection('events').add(newEvent);
-    
-    res.status(201).json({ 
-      success: true, 
-      data: { id: docRef.id, ...newEvent } 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-app.post('/api/events/:id/enroll', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { userId } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'User must be logged in to enroll' 
-      });
-    }
-    
-    
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found' 
-      });
-    }
-    
-    const userData = userDoc.data();
-    
-    const eventRef = db.collection('events').doc(id);
-    const eventDoc = await eventRef.get();
-    
-    if (!eventDoc.exists) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Event not found' 
-      });
-    }
-    
-    const eventData = eventDoc.data();
-    
-    
-    if (eventData.enrollments && eventData.enrollments.some(e => e.userId === userId)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Already enrolled in this event' 
-      });
-    }
-    
-    if (eventData.enrolledMembers >= eventData.membersRequired) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Event is full' 
-      });
-    }
-    
-    const enrollment = {
-      userId,
-      userName: userData.name,
-      userEmail: userData.email,
-      enrolledAt: new Date().toISOString()
-    };
-    
-    await eventRef.update({
-      enrolledMembers: admin.firestore.FieldValue.increment(1),
-      enrollments: admin.firestore.FieldValue.arrayUnion(enrollment)
-    });
-    
-    res.json({ 
-      success: true, 
-      message: 'Enrollment successful' 
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-
-app.delete('/api/events/:id', async (req, res) => {
-  try {
-    await db.collection('events').doc(req.params.id).delete();
-    res.json({ success: true, message: 'Event deleted successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+  const docRef = await db.collection('events').add(newEvent);
+  res.status(201).json({ success: true, data: { id: docRef.id, ...newEvent } });
+}));
