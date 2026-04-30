@@ -1,7 +1,7 @@
 {
-  "name": "ticket-booking-server",
-  "version": "1.0.0",
-  "description": "Ticket booking server with Firebase",
+  "name": "eventix-server",
+  "version": "2.0.0",
+  "description": "Eventix – concurrency-first event platform backend",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -11,7 +11,21 @@
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "firebase-admin": "^12.0.0"
+    "firebase-admin": "^12.0.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "express-session": "^1.17.3",
+    "cookie-parser": "^1.4.6",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
+    "passport-jwt": "^4.0.1",
+    "socket.io": "^4.7.4",
+    "ejs": "^3.1.10",
+    "morgan": "^1.10.0",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.2.0",
+    "compression": "^1.7.4",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
