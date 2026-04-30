@@ -1,132 +1,458 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eventix · discover & book experiences</title>
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <link rel="stylesheet" href="home.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Eventix — Live Event Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Syne:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080808;--surface:#0f0f0f;--fg:#f2ede7;--muted:#3a3a3a;
+  --muted2:#666;--accent:#d4c5b0;--red:#c0392b;--border:rgba(242,237,231,.06);
+  --font:'Inter',sans-serif;--display:'Syne',sans-serif;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:auto;overflow-x:hidden;}
+body{font-family:var(--font);background:var(--bg);color:var(--fg);overflow-x:hidden;cursor:none;}
+
+/* Loading screen that shows when page first loads */
+#loader{position:fixed;inset:0;z-index:9000;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem;}
+#loader-logo{font-family:var(--display);font-size:clamp(3rem,8vw,7rem);font-weight:900;letter-spacing:-.04em;overflow:hidden;}
+#loader-logo span{display:inline-block;transform:translateY(110%);opacity:0;}
+#loader-bar{width:200px;height:1px;background:var(--muted);overflow:hidden;}
+#loader-fill{height:100%;background:var(--fg);width:0%;transition:width .05s linear;}
+
+/* Custom cursor - small dot that follows mouse */
+#cur{position:fixed;width:8px;height:8px;background:var(--fg);border-radius:50%;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);mix-blend-mode:difference;transition:transform .1s;}
+/* Ring around cursor */
+#cur-ring{position:fixed;width:40px;height:40px;border:1px solid rgba(242,237,231,.3);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);transition:width .3s,height .3s,border-color .3s;}
+/* Make cursor bigger when hovering over clickable things */
+body.cursor-hover #cur{transform:translate(-50%,-50%) scale(3);}
+body.cursor-hover #cur-ring{width:60px;height:60px;border-color:rgba(242,237,231,.15);}
+
+/* Grain texture overlay - gives that film/vintage look */
+body::after{content:'';position:fixed;inset:-50%;z-index:9991;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  width:200%;height:200%;animation:grain 8s steps(10) infinite;opacity:.4;}
+/* Animation to move grain around slightly */
+@keyframes grain{0%,100%{transform:translate(0,0)}10%{transform:translate(-2%,-3%)}20%{transform:translate(3%,2%)}30%{transform:translate(-1%,4%)}40%{transform:translate(4%,-1%)}50%{transform:translate(-3%,3%)}60%{transform:translate(2%,-4%)}70%{transform:translate(-4%,1%)}80%{transform:translate(1%,-2%)}90%{transform:translate(-2%,4%)}}
+
+/* Navigation bar styles */
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:500;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1.6rem 5%;
+  transition:background .4s, border-color .4s;
+  border-bottom:1px solid transparent;
+}
+/* When user scrolls down, add blur effect */
+nav.scrolled{
+  background:rgba(8,8,8,.88);
+  backdrop-filter:blur(24px);
+  border-color:var(--border);
+}
+/* Logo styling */
+.nav-logo{
+  font-family:var(--display);font-size:1.3rem;font-weight:900;
+  letter-spacing:-.02em;color:var(--fg);text-decoration:none;
+}
+/* Navigation links container */
+.nav-links{display:flex;align-items:center;gap:2rem;}
+.nav-links a{
+  font-size:.7rem;font-weight:500;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--fg);text-decoration:none;opacity:.5;transition:opacity .2s;
+}
+.nav-links a:hover{opacity:1;}
+/* Special button style for Sign Up */
+.nav-cta{
+  font-size:.7rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;
+  color:#080808 !important;
+  background:var(--fg);
+  padding:.6rem 1.8rem;
+  text-decoration:none;
+  opacity:1 !important;
+  transition:all .2s;
+  border-radius:2px;
+}
+.nav-cta:hover{opacity:.85 !important;transform:translateY(-2px);}
+
+/* Main hero section - takes up full screen */
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:flex-end;padding:0 5% 5rem;position:relative;overflow:hidden;}
+/* Background gradient effect */
+.hero-bg{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 60% 40%,rgba(192,57,43,.07),transparent 70%);pointer-events:none;}
+.hero-eyebrow{font-size:.65rem;letter-spacing:.25em;text-transform:uppercase;color:var(--muted2);margin-bottom:2rem;display:flex;align-items:center;gap:1rem;overflow:hidden;}
+.hero-eyebrow-inner{display:flex;align-items:center;gap:1rem;transform:translateY(100%);}
+.hero-eyebrow::before{content:'';display:block;width:28px;height:1px;background:var(--muted2);}
+.hero-title{font-family:var(--display);font-size:clamp(4rem,11vw,12rem);font-weight:900;line-height:.9;letter-spacing:-.04em;margin-bottom:3rem;}
+.hero-title .line{overflow:hidden;display:block;}
+.hero-title .word{display:inline-block;transform:translateY(110%);}
+.hero-title .outline{-webkit-text-stroke:1px rgba(242,237,231,.25);color:transparent;}
+.hero-bottom{display:flex;align-items:flex-end;justify-content:space-between;gap:2rem;flex-wrap:wrap;}
+.hero-desc{max-width:380px;font-size:.95rem;line-height:1.75;color:var(--muted2);font-weight:300;overflow:hidden;}
+.hero-desc-inner{transform:translateY(40px);opacity:0;}
+.hero-actions{display:flex;gap:1rem;align-items:center;overflow:hidden;}
+.hero-actions-inner{display:flex;gap:1rem;transform:translateY(40px);opacity:0;}
+.btn-primary{font-size:.72rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--bg);background:var(--fg);padding:.9rem 2.4rem;border:none;cursor:pointer;text-decoration:none;display:inline-block;transition:opacity .2s,transform .2s;}
+.btn-primary:hover{opacity:.88;transform:translateY(-1px);}
+.btn-ghost{font-size:.72rem;font-weight:500;letter-spacing:.15em;text-transform:uppercase;color:var(--muted2);background:none;padding:.9rem 2.4rem;border:1px solid var(--muted);cursor:pointer;text-decoration:none;display:inline-block;transition:color .2s,border-color .2s;}
+.btn-ghost:hover{color:var(--fg);border-color:rgba(242,237,231,.3);}
+.hero-scroll{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2);writing-mode:vertical-rl;display:flex;align-items:center;gap:.8rem;overflow:hidden;}
+.hero-scroll-inner{display:flex;align-items:center;gap:.8rem;transform:translateY(40px);opacity:0;}
+.hero-scroll::after{content:'';display:block;width:1px;height:60px;background:var(--muted);animation:scrollPulse 2s ease-in-out infinite;}
+@keyframes scrollPulse{0%,100%{transform:scaleY(1);opacity:.4;}50%{transform:scaleY(.3);opacity:.1;}}
+
+/* ── Marquee ── */
+.marquee-wrap{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:.9rem 0;overflow:hidden;position:relative;}
+.marquee-track{display:flex;gap:0;white-space:nowrap;animation:marquee 22s linear infinite;}
+.marquee-track:hover{animation-play-state:paused;}
+.marquee-item{font-family:var(--display);font-size:clamp(.9rem,1.5vw,1.1rem);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted2);padding:0 3rem;display:flex;align-items:center;gap:3rem;flex-shrink:0;}
+.marquee-item .dot{width:4px;height:4px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+@keyframes marquee{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border);}
+.stat{padding:3rem 5%;border-right:1px solid var(--border);position:relative;overflow:hidden;}
+.stat:last-child{border-right:none;}
+.stat::before{content:'';position:absolute;inset:0;background:var(--fg);transform:scaleY(0);transform-origin:bottom;transition:transform .5s cubic-bezier(.4,0,.2,1);z-index:0;}
+.stat:hover::before{transform:scaleY(1);}
+.stat:hover .stat-num,.stat:hover .stat-label{color:var(--bg);position:relative;z-index:1;}
+.stat-num{font-family:var(--display);font-size:clamp(2.5rem,4vw,4rem);font-weight:900;letter-spacing:-.04em;line-height:1;transition:color .3s;}
+.stat-label{font-size:.65rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted2);margin-top:.5rem;transition:color .3s;}
+
+/* ── Section ── */
+.section{padding:6rem 5%;}
+.section-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4rem;}
+.section-num{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2);margin-right:1rem;}
+.section-title{font-family:var(--display);font-size:clamp(2rem,4vw,3.5rem);font-weight:900;letter-spacing:-.04em;overflow:hidden;}
+.section-title-inner{display:block;transform:translateY(100%);}
+.section-link{font-size:.65rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted2);text-decoration:none;transition:color .2s;display:flex;align-items:center;gap:.5rem;}
+.section-link:hover{color:var(--fg);}
+.section-link::after{content:'→';transition:transform .2s;}
+.section-link:hover::after{transform:translateX(4px);}
+
+/* ── Events list ── */
+.events-list{border-top:1px solid var(--border);}
+.event-row{display:flex;align-items:center;gap:2rem;padding:1.8rem 0;border-bottom:1px solid var(--border);cursor:pointer;text-decoration:none;color:inherit;position:relative;overflow:hidden;transition:padding .3s;}
+.event-row::before{content:'';position:absolute;inset:0;background:var(--fg);transform:scaleX(0);transform-origin:left;transition:transform .4s cubic-bezier(.4,0,.2,1);z-index:0;}
+.event-row:hover::before{transform:scaleX(1);}
+.event-row:hover .er-num,.event-row:hover .er-icon,.event-row:hover .er-name,.event-row:hover .er-meta,.event-row:hover .er-spots,.event-row:hover .er-arrow{color:var(--bg);position:relative;z-index:1;}
+.event-row:hover .er-bar-fill{background:var(--bg);}
+.event-row:hover .er-bar-track{background:rgba(0,0,0,.15);}
+.er-num{font-size:.6rem;letter-spacing:.15em;color:var(--muted2);min-width:2.5rem;transition:color .3s;}
+.er-icon{width:52px;height:52px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0;transition:background .3s;}
+.event-row:hover .er-icon{background:rgba(0,0,0,.1);}
+.er-info{flex:1;}
+.er-name{font-family:var(--display);font-size:1.15rem;font-weight:700;letter-spacing:-.02em;margin-bottom:.2rem;transition:color .3s;}
+.er-meta{font-size:.75rem;color:var(--muted2);transition:color .3s;}
+.er-right{text-align:right;min-width:120px;}
+.er-spots{font-size:.65rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:.5rem;transition:color .3s;}
+.er-bar-track{height:1px;background:var(--muted);overflow:hidden;transition:background .3s;}
+.er-bar-fill{height:100%;background:var(--fg);transition:width .6s cubic-bezier(.4,0,.2,1),background .3s;}
+.er-arrow{font-size:1.2rem;color:var(--muted2);transition:transform .3s,color .3s;}
+.event-row:hover .er-arrow{transform:translateX(6px);}
+
+/* ── CTA ── */
+.cta{margin:0 5% 6rem;padding:6rem 5%;border:1px solid var(--border);position:relative;overflow:hidden;}
+.cta::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 20% 50%,rgba(192,57,43,.08),transparent 70%);pointer-events:none;}
+.cta-label{font-size:.65rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted2);margin-bottom:1.5rem;}
+.cta-title{font-family:var(--display);font-size:clamp(2.5rem,6vw,6rem);font-weight:900;letter-spacing:-.04em;line-height:.95;margin-bottom:2.5rem;overflow:hidden;}
+.cta-title .line{overflow:hidden;display:block;}
+.cta-title .word{display:inline-block;transform:translateY(110%);}
+.cta-actions{display:flex;gap:1rem;flex-wrap:wrap;}
+
+/* ── Footer ── */
+footer{padding:2rem 5%;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;}
+footer p{font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:var(--muted2);}
+
+@media(max-width:768px){
+  .stats{grid-template-columns:1fr 1fr;}
+  .stat{border-right:none;border-bottom:1px solid var(--border);}
+  nav .nav-links{display:none;}
+  .hero-title{font-size:clamp(3rem,14vw,6rem);}
+}
+</style>
 </head>
 <body>
-    <canvas id="bg-canvas"></canvas>
-    <div class="content-wrapper">
-        <nav class="navbar">
-            <div class="logo">EVENTIX<span></span></div>
-            <div class="nav-links">
-                <a href="currevents.html">events</a>
-                <a href="#">explore</a>
-                <a href="#">for you</a>
-                <a href="login.html" class="btn-outline"><i class="fa-regular fa-user"></i> sign in</a>
-            </div>
-        </nav>
 
-        
-        <section class="hero">
-            <div class="carousel-container" id="carousel">
-                <div class="carousel-slides" id="carouselSlides">
-                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1531058020387-3be344556be6?q=80&w=2070&auto=format&fit=crop');">
-                        <div class="slide-content">
-                            <h1>Feel the rhythm<br>live tonight</h1>
-                            <p>undiscovered DJs & massive beats – tickets now</p>
-                            <div class="btn-group">
-                                <button class="btn-primary"><i class="fa-solid fa-ticket"></i> grab tickets</button>
-                                <button class="btn-secondary"><i class="fa-regular fa-circle-play"></i> watch trailer</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?q=80&w=2070&auto=format&fit=crop');">
-                        <div class="slide-content">
-                            <h1>comedy nights<br>with top stars</h1>
-                            <p>unforgettable laughter – special guests every week</p>
-                            <div class="btn-group">
-                                <button class="btn-primary"><i class="fa-regular fa-face-smile"></i> see line-up</button>
-                                <button class="btn-secondary"><i class="fa-regular fa-calendar-check"></i> book early</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="slide" style="background-image: url('https://images.unsplash.com/photo-1540575467063-178a50c2df87?q=80&w=2070&auto=format&fit=crop');">
-                        <div class="slide-content">
-                            <h1>theatre &<br>cultural fest</h1>
-                            <p>drama, dance & stories from around the world</p>
-                            <div class="btn-group">
-                                <button class="btn-primary"><i class="fa-solid fa-masks-theater"></i> explore shows</button>
-                                <button class="btn-secondary"><i class="fa-regular fa-gem"></i> members only</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="carousel-arrow left-arrow" id="leftArrow"><i class="fas fa-chevron-left"></i></div>
-                <div class="carousel-arrow right-arrow" id="rightArrow"><i class="fas fa-chevron-right"></i></div>
-                <div class="dot-container" id="dotContainer">
-                    <span class="dot active"></span>
-                    <span class="dot"></span>
-                    <span class="dot"></span>
-                </div>
-            </div>
-        </section>
+<div id="loader">
+  <div id="loader-logo">
+    <span>E</span><span>V</span><span>E</span><span>N</span><span>T</span><span>I</span><span>X</span>
+  </div>
+  <div id="loader-bar"><div id="loader-fill"></div></div>
+</div>
 
-        
-        <section class="featured-section">
-            <div class="section-title">
-                <h2>trending now <i>live</i></h2>
-                <a href="#">view all <i class="fa-solid fa-arrow-right"></i></a>
-            </div>
-            <div class="category-grid" id="categoryGrid">
-                <div class="category-card" data-count="38">
-                    <div class="category-icon"><i class="fas fa-music"></i></div>
-                    <h3>concerts</h3>
-                    <p>rock, pop, indie</p>
-                    <span class="event-count" id="count1">38 events</span>
-                </div>
-                <div class="category-card" data-count="52">
-                    <div class="category-icon"><i class="fas fa-microphone-alt"></i></div>
-                    <h3>comedy</h3>
-                    <p>stand-up, improv</p>
-                    <span class="event-count" id="count2">52 events</span>
-                </div>
-                <div class="category-card" data-count="27">
-                    <div class="category-icon"><i class="fas fa-paint-brush"></i></div>
-                    <h3>workshops</h3>
-                    <p>art, wellness</p>
-                    <span class="event-count" id="count3">27 events</span>
-                </div>
-                <div class="category-card" data-count="44">
-                    <div class="category-icon"><i class="fas fa-utensils"></i></div>
-                    <h3>food fest</h3>
-                    <p>tasting, pop-ups</p>
-                    <span class="event-count" id="count4">44 events</span>
-                </div>
-            </div>
-        </section>
+<div id="cur"></div>
+<div id="cur-ring"></div>
 
-        
-        <section class="events-section">
-            <div class="events-header">
-                <h2>🔮 coming soon near you</h2>
-                <a href="#" style="color:#e13b2e;">more <i class="fa-regular fa-calendar"></i></a>
-            </div>
-            <div class="event-cards" id="eventCardsContainer"></div>
-        </section>
+<nav>
+  <a href="home.html" class="nav-logo">Eventix</a>
+  <div class="nav-links">
+    <a href="currevents.html">Events</a>
+    <a href="#about">About</a>
+    <a href="#contact">Contact</a>
+    <a href="login.html">Sign In</a>
+    <a href="signup.html" class="nav-cta">Sign Up</a>
+  </div>
+</nav>
 
-        
-        <div class="newsletter">
-            <h3>never miss a beat</h3>
-            <p>get curated events & early access</p>
-            <div class="newsletter-input">
-                <input type="email" placeholder="your.email@example.com" id="newsletterEmail">
-                <button id="subscribeBtn"><i class="fa-regular fa-bell"></i> subscribe</button>
-            </div>
-            <small style="display:block; margin-top:1.5rem; opacity:0.7;">✨ join 120k+ event lovers</small>
-        </div>
-
-        <footer>
-            <p>eventix · 2025 · discover the extraordinary ✦</p>
-        </footer>
+<section class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-eyebrow">
+    <span class="hero-eyebrow-inner">Live event platform &nbsp;·&nbsp; 2025 &nbsp;·&nbsp; Real-time seats</span>
+  </div>
+  <h1 class="hero-title">
+    <span class="line"><span class="word">Discover.</span></span>
+    <span class="line"><span class="word">Book.</span> <span class="word outline">Experience.</span></span>
+  </h1>
+  <div class="hero-bottom">
+    <div class="hero-desc">
+      <div class="hero-desc-inner">
+        Atomic seat reservation. Zero overbooking.<br>
+        Every transaction guaranteed by Firestore transactions<br>
+        and Socket.io real-time concurrency.
+      </div>
     </div>
+    <div class="hero-actions">
+      <div class="hero-actions-inner">
+        <a href="currevents.html" class="btn-primary">Browse Events</a>
+        <a href="signup.html" class="btn-ghost">Create Account</a>
+      </div>
+    </div>
+    <div class="hero-scroll">
+      <div class="hero-scroll-inner">Scroll</div>
+    </div>
+  </div>
+</section>
 
-    
-    <script src="home.js"></script>
+<div class="marquee-wrap">
+  <div class="marquee-track" id="marqueeTrack">
+    <!-- filled by JS -->
+  </div>
+</div>
+
+<div class="stats" id="statsRow">
+  <div class="stat"><div class="stat-num" id="sEvents">—</div><div class="stat-label">Live Events</div></div>
+  <div class="stat"><div class="stat-num" id="sSpots">—</div><div class="stat-label">Open Spots</div></div>
+  <div class="stat"><div class="stat-num" id="sEnrolled">—</div><div class="stat-label">Enrolled</div></div>
+  <div class="stat"><div class="stat-num">0ms</div><div class="stat-label">Booking Latency</div></div>
+</div>
+
+<section class="section" id="about">
+  <div class="section-header">
+    <div style="display:flex;align-items:baseline;gap:.8rem">
+      <span class="section-num">01</span>
+      <h2 class="section-title"><span class="section-title-inner">Featured Events</span></h2>
+    </div>
+    <a href="currevents.html" class="section-link">All events</a>
+  </div>
+  <div class="events-list" id="eventsList">
+    <div style="padding:3rem 0;color:var(--muted2);font-size:.8rem;letter-spacing:.1em;text-transform:uppercase">Loading…</div>
+  </div>
+</section>
+
+<div class="cta" id="contact">
+  <div class="cta-label">Ready to book?</div>
+  <h2 class="cta-title">
+    <span class="line"><span class="word">Secure your</span></span>
+    <span class="line"><span class="word">seat</span> <span class="word outline">tonight.</span></span>
+  </h2>
+  <div class="cta-actions">
+    <a href="currevents.html" class="btn-primary">Browse Events</a>
+    <a href="signup.html" class="btn-ghost">Create Account</a>
+  </div>
+</div>
+
+<footer>
+  <p>Eventix &copy; 2025</p>
+  <p>Socket.io · Firebase · Express · JWT</p>
+</footer>
+
+<!-- GSAP CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script>
+const API = 'http://localhost:3000/api';
+gsap.registerPlugin(ScrollTrigger);
+
+// Make navbar blur when user scrolls down
+const navbar = document.querySelector('nav');
+window.addEventListener('scroll', () => {
+  navbar.classList.toggle('scrolled', window.scrollY > 40);
+});
+
+// Custom cursor that follows mouse movement
+const cur = document.getElementById('cur');
+const ring = document.getElementById('cur-ring');
+let mx = 0, my = 0, rx = 0, ry = 0;
+document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+// Smooth cursor movement using lerp (linear interpolation)
+(function lerp() {
+  rx += (mx - rx) * .12; ry += (my - ry) * .12;
+  cur.style.left  = mx + 'px'; cur.style.top  = my + 'px';
+  ring.style.left = rx + 'px'; ring.style.top = ry + 'px';
+  requestAnimationFrame(lerp);
+})();
+// Make cursor bigger when hovering over clickable elements
+document.querySelectorAll('a,button,.stat,.event-row').forEach(el => {
+  el.addEventListener('mouseenter', () => document.body.classList.add('cursor-hover'));
+  el.addEventListener('mouseleave', () => document.body.classList.remove('cursor-hover'));
+});
+
+// Loading screen animation
+const loader = document.getElementById('loader');
+const fill   = document.getElementById('loader-fill');
+const letters = document.querySelectorAll('#loader-logo span');
+
+// Animate each letter of EVENTIX one by one
+gsap.to(letters, { y: 0, opacity: 1, duration: .6, stagger: .06, ease: 'power3.out', delay: .2 });
+
+// Fake progress bar that fills up
+let prog = 0;
+const progInterval = setInterval(() => {
+  prog = Math.min(prog + Math.random() * 18, 95);
+  fill.style.width = prog + '%';
+}, 80);
+
+// Load event data from server and hide loader when done
+async function init() {
+  try {
+    const res  = await fetch(`${API}/events`);
+    const data = await res.json();
+    clearInterval(progInterval);
+    fill.style.width = '100%';
+    await new Promise(r => setTimeout(r, 300));
+    // Slide loader up and out of view
+    gsap.to(loader, {
+      yPercent: -100, duration: .9, ease: 'power3.inOut',
+      onComplete: () => { loader.style.display = 'none'; startPageAnimations(); }
+    });
+    if (data.data) renderData(data.data);
+  } catch(_) {
+    // If server fails, still hide loader
+    clearInterval(progInterval);
+    fill.style.width = '100%';
+    gsap.to(loader, { yPercent: -100, duration: .9, ease: 'power3.inOut', onComplete: () => { loader.style.display = 'none'; startPageAnimations(); } });
+  }
+}
+init();
+
+// All the cool animations that happen after loading screen
+function startPageAnimations() {
+  // Slide in the small text above title
+  gsap.to('.hero-eyebrow-inner', { y: 0, duration: .8, ease: 'power3.out', delay: .1 });
+  // Slide in each word of the big title
+  gsap.to('.hero-title .word', { y: 0, duration: 1, stagger: .12, ease: 'power3.out', delay: .25 });
+  // Fade in description, buttons, and scroll indicator
+  gsap.to(['.hero-desc-inner', '.hero-actions-inner', '.hero-scroll-inner'], {
+    y: 0, opacity: 1, duration: .9, stagger: .1, ease: 'power3.out', delay: .5
+  });
+
+  // Animate stats when user scrolls to them
+  document.querySelectorAll('.stat').forEach((el, i) => {
+    gsap.from(el, { opacity: 0, y: 30, duration: .6, delay: i * .08, ease: 'power2.out',
+      scrollTrigger: { trigger: el, start: 'top 85%' }
+    });
+  });
+
+  // Animate section titles when scrolling
+  document.querySelectorAll('.section-title-inner').forEach(el => {
+    gsap.to(el, { y: 0, duration: .9, ease: 'power3.out',
+      scrollTrigger: { trigger: el, start: 'top 88%' }
+    });
+  });
+
+  // Slide in event rows one by one
+  gsap.from('.event-row', { opacity: 0, x: -20, duration: .5, stagger: .07, ease: 'power2.out',
+    scrollTrigger: { trigger: '.events-list', start: 'top 80%' }
+  });
+
+  // Animate bottom CTA section
+  gsap.to('.cta-title .word', { y: 0, duration: 1, stagger: .1, ease: 'power3.out',
+    scrollTrigger: { trigger: '.cta', start: 'top 75%' }
+  });
+
+  // Parallax effect on hero background
+  gsap.to('.hero-bg', { yPercent: 30, ease: 'none',
+    scrollTrigger: { trigger: '.hero', start: 'top top', end: 'bottom top', scrub: true }
+  });
+}
+
+// Scrolling text banner with tech features
+const MARQUEE_ITEMS = ['Live Events','Real-time Seats','Zero Overbooking','Atomic Booking','Socket.io','Firebase','Concurrency Control','Instant Confirmation'];
+const track = document.getElementById('marqueeTrack');
+const html  = MARQUEE_ITEMS.map(t => `<span class="marquee-item">${t}<span class="dot"></span></span>`).join('');
+track.innerHTML = html + html; // duplicate items for seamless infinite scroll
+
+// Display events and stats from server
+const ICONS = { music:'🎵', tech:'💻', sports:'🏆', food:'🍽️', general:'🎭' };
+
+function renderData(events) {
+  // Calculate stats from events data
+  const total    = events.length;
+  const enrolled = events.reduce((s,e) => s+(e.enrolledMembers||0), 0);
+  const open     = events.reduce((s,e) => s+Math.max(0,e.membersRequired-(e.enrolledMembers||0)), 0);
+  countUp('sEvents',  total);
+  countUp('sSpots',   open);
+  countUp('sEnrolled', enrolled);
+
+  // Show first 6 events on homepage
+  const list = document.getElementById('eventsList');
+  if (!events.length) { list.innerHTML = '<div style="padding:3rem 0;color:var(--muted2);font-size:.8rem;letter-spacing:.1em;text-transform:uppercase">No events yet</div>'; return; }
+  list.innerHTML = events.slice(0,6).map((ev,i) => {
+    const spots = ev.membersRequired - (ev.enrolledMembers||0);
+    const pct   = Math.min(Math.round(((ev.enrolledMembers||0)/ev.membersRequired)*100),100);
+    const date  = new Date(ev.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+    return `
+    <a class="event-row" href="currevents.html">
+      <span class="er-num">0${i+1}</span>
+      <div class="er-icon">${ICONS[ev.category||'general']||'🎭'}</div>
+      <div class="er-info">
+        <div class="er-name">${ev.eventName}</div>
+        <div class="er-meta">${ev.organizerName} &nbsp;·&nbsp; ${date}</div>
+      </div>
+      <div class="er-right">
+        <div class="er-spots">${spots>0?spots+' left':'Full'}</div>
+        <div class="er-bar-track"><div class="er-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+      <span class="er-arrow">→</span>
+    </a>`;
+  }).join('');
+}
+
+// Animate numbers counting up
+function countUp(id, target) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  gsap.to({ val: 0 }, {
+    val: target, duration: 1.5, ease: 'power2.out', delay: .3,
+    onUpdate: function() { el.textContent = Math.round(this.targets()[0].val); },
+    scrollTrigger: { trigger: '#statsRow', start: 'top 80%', once: true }
+  });
+}
+
+// Check if user is logged in and update navigation
+try {
+  const u = JSON.parse(localStorage.getItem('user'));
+  if (u) { 
+    // User is logged in - show different nav options
+    const navLinks = document.querySelector('.nav-links');
+    navLinks.innerHTML = `
+      <a href="currevents.html">Events</a>
+      <a href="bookings.html">My Bookings</a>
+      <a href="profile.html">Profile</a>
+      ${u.isAdmin ? '<a href="admin.html" class="nav-cta">Admin Panel</a>' : '<button onclick="logout()" class="nav-cta" style="border:none;cursor:pointer;">Logout</button>'}
+    `;
+  }
+} catch(_) {}
+
+// Logout function
+function logout() {
+  if (confirm('Are you sure you want to logout?')) {
+    localStorage.removeItem('user');
+    window.location.reload(); // Refresh page to show logged-out nav
+  }
+}
+</script>
 </body>
 </html>
