@@ -1,2 +1,3 @@
 node_modules/
 fireb-sdk.json
+.env
