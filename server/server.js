@@ -397,3 +397,375 @@ app.post('/api/events', requireAuth, asyncHandler(async (req, res) => {
   const docRef = await db.collection('events').add(newEvent);
   res.status(201).json({ success: true, data: { id: docRef.id, ...newEvent } });
 }));
+// GET /api/events/:id/reservations — Get active reservations for an event
+// This shows which seats are currently being held by other users
+app.get('/api/events/:id/reservations', asyncHandler(async (req, res) => {
+  const now = new Date();
+  // Only get reservations that haven't expired yet
+  const snap = await db.collection('reservations')
+    .where('eventId', '==', req.params.id)
+    .where('expiresAt', '>', now)
+    .get();
+
+  const reservations = snap.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
+
+  res.json({ success: true, data: reservations });
+}));
+
+// DELETE /api/events/:id/reserve — Clear user's reservation
+app.delete('/api/events/:id/reserve', requireAuth, asyncHandler(async (req, res) => {
+  const eventId = req.params.id;
+  const userId = req.user.id;
+
+  // Delete user's reservations for this event
+  const reservationsSnap = await db.collection('reservations')
+    .where('eventId', '==', eventId)
+    .where('userId', '==', userId)
+    .get();
+
+  if (reservationsSnap.empty) {
+    return res.json({ success: true, message: 'No reservation to clear' });
+  }
+
+  const batch = db.batch();
+  const seats = [];
+  reservationsSnap.docs.forEach(doc => {
+    seats.push(...doc.data().seats);
+    batch.delete(doc.ref);
+  });
+  await batch.commit();
+
+  // Broadcast that seats are released
+  io.to(`event:${eventId}`).emit('seats:released', { eventId, seats });
+
+  res.json({ success: true, message: 'Reservation cleared' });
+}));
+
+// POST /api/events/:id/reserve — Reserve seats for 5 minutes
+// When user selects seats, they get a 5-minute hold before confirming
+app.post('/api/events/:id/reserve', requireAuth, asyncHandler(async (req, res) => {
+  const eventId = req.params.id;
+  const user    = req.user;
+  const seats   = req.body.seats || [];
+
+  if (!seats.length) return res.status(400).json({ success: false, error: 'No seats provided' });
+  if (seats.length > 10) return res.status(400).json({ success: false, error: 'Max 10 seats per booking' });
+
+  const eventDoc = await db.collection('events').doc(eventId).get();
+  if (!eventDoc.exists) return res.status(404).json({ success: false, error: 'Event not found' });
+
+  const event = eventDoc.data();
+
+  // Make sure seats aren't already permanently booked
+  const takenSeats = new Set((event.enrollments || []).map(e => e.seats || [e.seat]).flat().filter(Boolean));
+  const conflict = seats.find(s => takenSeats.has(s));
+  if (conflict) return res.status(400).json({ success: false, error: `Seat ${conflict} already taken` });
+
+  // Check if seats are reserved by someone else right now
+  const reservationsSnap = await db.collection('reservations')
+    .where('eventId', '==', eventId)
+    .where('expiresAt', '>', new Date())
+    .get();
+
+  const reservedSeats = new Set();
+  reservationsSnap.docs.forEach(doc => {
+    const r = doc.data();
+    // Don't count our own reservations as conflicts
+    if (r.userId !== user.id) r.seats.forEach(s => reservedSeats.add(s));
+  });
+
+  const reservedConflict = seats.find(s => reservedSeats.has(s));
+  if (reservedConflict) return res.status(400).json({ success: false, error: `Seat ${reservedConflict} is being held by another user` });
+
+  // Clear any old reservations by this user for this event
+  const oldReservations = await db.collection('reservations')
+    .where('eventId', '==', eventId)
+    .where('userId', '==', user.id)
+    .get();
+  
+  const batch = db.batch();
+  oldReservations.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+
+  // Create new reservation that expires in 5 minutes
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  const reservation = {
+    eventId, userId: user.id, userName: user.name, seats,
+    createdAt: new Date(), expiresAt,
+  };
+
+  const reservationRef = await db.collection('reservations').add(reservation);
+
+  // Tell everyone else these seats are now reserved
+  io.to(`event:${eventId}`).emit('seats:reserved', {
+    eventId, seats, userId: user.id, expiresAt: expiresAt.toISOString(),
+  });
+
+  res.json({ success: true, reservationId: reservationRef.id, expiresAt: expiresAt.toISOString() });
+}));
+
+// POST /api/events/:id/enroll  — CONCURRENCY via Firestore Transaction
+// ─────────────────────────────────────────────────────────────────────────────
+// Supports booking 1–10 seats atomically in a single transaction.
+// All seats are checked and written together — no partial bookings possible.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/events/:id/enroll', requireAuth, enrollLimiter, asyncHandler(async (req, res) => {
+  const eventRef = db.collection('events').doc(req.params.id);
+  const user     = req.user;
+  const seats    = req.body.seats || (req.body.seat ? [req.body.seat] : []); // array of seat IDs
+  const count    = seats.length || 1; // how many seats being booked
+
+  if (count > 10) return res.status(400).json({ success: false, error: 'Max 10 seats per booking' });
+
+  await db.runTransaction(async (tx) => {
+    const eventDoc = await tx.get(eventRef);
+    if (!eventDoc.exists) throw Object.assign(new Error('Event not found'), { status: 404 });
+
+    const event = eventDoc.data();
+
+    // Check user hasn't already enrolled
+    if (event.enrollments?.some((e) => e.userId === user.id))
+      throw Object.assign(new Error('Already enrolled in this event'), { status: 400 });
+
+    // Check enough spots remain
+    const spotsLeft = event.membersRequired - event.enrolledMembers;
+    if (spotsLeft < count)
+      throw Object.assign(new Error(`Only ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left`), { status: 400 });
+
+    // Check none of the requested seats are already taken
+    if (seats.length > 0) {
+      const takenSeats = new Set((event.enrollments || []).map(e => e.seats || [e.seat]).flat().filter(Boolean));
+      const conflict   = seats.find(s => takenSeats.has(s));
+      if (conflict) throw Object.assign(new Error(`Seat ${conflict} already taken — pick another`), { status: 400 });
+    }
+
+    // Build enrollment record
+    const enrollment = {
+      userId:     user.id,
+      userName:   user.name,
+      userEmail:  user.email,
+      seats:      seats.length > 0 ? seats : null,  // array of seat IDs or null
+      seatCount:  count,
+      enrolledAt: new Date().toISOString(),
+    };
+
+    tx.update(eventRef, {
+      enrolledMembers: admin.firestore.FieldValue.increment(count),
+      enrollments:     admin.firestore.FieldValue.arrayUnion(enrollment),
+    });
+  });
+
+  // Clear user's reservation after successful booking
+  const reservationsSnap = await db.collection('reservations')
+    .where('eventId', '==', req.params.id)
+    .where('userId', '==', user.id)
+    .get();
+  
+  const batch = db.batch();
+  reservationsSnap.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+
+  // Broadcast live update via Socket.io
+  const updated = await eventRef.get();
+  const data    = updated.data();
+
+  // Broadcast each taken seat individually so other clients update in real time
+  seats.forEach(seat => {
+    io.to(`event:${req.params.id}`).emit('seat:taken', {
+      eventId: req.params.id, seat, userId: user.id,
+    });
+  });
+
+  io.to(`event:${req.params.id}`).emit('event:update', {
+    id:              req.params.id,
+    enrolledMembers: data.enrolledMembers,
+    membersRequired: data.membersRequired,
+    spotsLeft:       data.membersRequired - data.enrolledMembers,
+    isFull:          data.enrolledMembers >= data.membersRequired,
+  });
+  io.to('admin').emit('enrollment:new', {
+    eventId: req.params.id, eventName: data.eventName,
+    enrolledMembers: data.enrolledMembers, membersRequired: data.membersRequired,
+    seats, seatCount: count,
+    timestamp: new Date().toISOString(),
+  });
+
+  res.json({ success: true, message: `${count} seat${count > 1 ? 's' : ''} booked successfully`, seats });
+}));
+
+// DELETE /api/events/:id
+app.delete('/api/events/:id', requireAuth, asyncHandler(async (req, res) => {
+  const doc = await db.collection('events').doc(req.params.id).get();
+  if (!doc.exists) return res.status(404).json({ success: false, error: 'Event not found' });
+  if (doc.data().organizerId !== req.user.id && !req.user.isAdmin)
+    return res.status(403).json({ success: false, error: 'Forbidden' });
+
+  await db.collection('events').doc(req.params.id).delete();
+  io.emit('event:deleted', { id: req.params.id });
+  res.json({ success: true, message: 'Event deleted' });
+}));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── ADMIN ROUTES  (requireAuth + requireAdmin applied as router-level guards)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/admin/users
+app.get('/api/admin/users', requireAuth, requireAdmin, asyncHandler(async (_req, res) => {
+  const snap  = await db.collection('users').get();
+  const users = snap.docs.map((d) => { const u = d.data(); delete u.password; return { id: d.id, ...u }; });
+  res.json({ success: true, data: users });
+}));
+
+// GET /api/admin/events
+app.get('/api/admin/events', requireAuth, requireAdmin, asyncHandler(async (_req, res) => {
+  const snap   = await db.collection('events').get();
+  const events = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  res.json({ success: true, data: events });
+}));
+
+// PUT /api/admin/users/:id/block
+app.put('/api/admin/users/:id/block', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  await db.collection('users').doc(req.params.id).update({
+    blocked: true, blockedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  pushAdminStats();
+  res.json({ success: true, message: 'User blocked' });
+}));
+
+// PUT /api/admin/users/:id/unblock
+app.put('/api/admin/users/:id/unblock', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  await db.collection('users').doc(req.params.id).update({
+    blocked: false, unblockedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+  pushAdminStats();
+  res.json({ success: true, message: 'User unblocked' });
+}));
+
+// DELETE /api/admin/users/:id
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  await db.collection('users').doc(req.params.id).delete();
+  pushAdminStats();
+  res.json({ success: true, message: 'User deleted' });
+}));
+
+// POST /api/admin/make-admin
+app.post('/api/admin/make-admin', requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+  const snap = await db.collection('users').where('email', '==', req.body.email).get();
+  if (snap.empty) return res.status(404).json({ success: false, error: 'User not found' });
+  await db.collection('users').doc(snap.docs[0].id).update({ isAdmin: true });
+  res.json({ success: true, message: `${req.body.email} is now admin` });
+}));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGACY ROUTES  (keep old /api/users/login + /api/users/register working
+//                 so existing client code doesn't break during transition)
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/users/register', (req, res, next) => {
+  req.url = '/api/auth/register'; app._router.handle(req, res, next);
+});
+app.post('/api/users/login', (req, res, next) => {
+  req.url = '/api/auth/login'; app._router.handle(req, res, next);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SOCKET.IO — FULL-DUPLEX REAL-TIME
+// ─────────────────────────────────────────────────────────────────────────────
+io.on('connection', (socket) => {
+  console.log(`🔌  Socket connected: ${socket.id}`);
+
+  socket.on('join:event', (eventId) => socket.join(`event:${eventId}`));
+  socket.on('leave:event', (eventId) => socket.leave(`event:${eventId}`));
+
+  socket.on('join:admin', () => {
+    socket.join('admin');
+    pushAdminStats(); // push current stats immediately
+  });
+
+  socket.on('disconnect', (reason) =>
+    console.log(`🔌  Socket disconnected: ${socket.id} (${reason})`)
+  );
+});
+
+async function pushAdminStats() {
+  try {
+    const [uSnap, eSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('events').get(),
+    ]);
+    const users  = uSnap.docs.map((d) => d.data());
+    const events = eSnap.docs.map((d) => d.data());
+    io.to('admin').emit('admin:stats', {
+      totalUsers:       users.length,
+      blockedUsers:     users.filter((u) => u.blocked).length,
+      totalEvents:      events.length,
+      totalEnrollments: events.reduce((s, e) => s + (e.enrolledMembers || 0), 0),
+      timestamp:        new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('pushAdminStats error:', err.message);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLEANUP JOB — Remove expired seat reservations every minute
+// ─────────────────────────────────────────────────────────────────────────────
+setInterval(async () => {
+  try {
+    const now = new Date();
+    const expiredSnap = await db.collection('reservations')
+      .where('expiresAt', '<=', now)
+      .get();
+
+    if (expiredSnap.empty) return;
+
+    const batch = db.batch();
+    const released = {}; // eventId -> seats[]
+
+    expiredSnap.docs.forEach(doc => {
+      const r = doc.data();
+      if (!released[r.eventId]) released[r.eventId] = [];
+      released[r.eventId].push(...r.seats);
+      batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+
+    // Broadcast released seats to clients
+    Object.entries(released).forEach(([eventId, seats]) => {
+      io.to(`event:${eventId}`).emit('seats:released', { eventId, seats });
+    });
+
+    console.log(`🧹 Cleaned up ${expiredSnap.size} expired reservations`);
+  } catch (err) {
+    console.error('Cleanup job error:', err.message);
+  }
+}, 60 * 1000); // Run every minute
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ERROR-HANDLING MIDDLEWARE  (must be last — 4-argument signature)
+// ─────────────────────────────────────────────────────────────────────────────
+app.use((req, _res, next) => {
+  const err = new Error(`Not found: ${req.method} ${req.originalUrl}`);
+  err.status = 404;
+  next(err);
+});
+
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  const status  = err.status || 500;
+  const message = err.message || 'Internal Server Error';
+  if (process.env.NODE_ENV !== 'production') console.error(`[${req.requestId}] ❌ ${status} ${message}`);
+  res.status(status).json({ success: false, error: message });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// START
+// ─────────────────────────────────────────────────────────────────────────────
+httpServer.listen(PORT, () => {
+  console.log(`\n  🚀  Eventix server  →  http://localhost:${PORT}`);
+  console.log(`  🔌  Socket.io       →  ws://localhost:${PORT}`);
+  console.log(`  📦  Client          →  http://localhost:${PORT}/home.html\n`);
+});
