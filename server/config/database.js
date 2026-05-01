@@ -7,7 +7,6 @@ import mongoose from 'mongoose';
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/eventix', {
-      // No need for useNewUrlParser and useUnifiedTopology in Mongoose 6+
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);

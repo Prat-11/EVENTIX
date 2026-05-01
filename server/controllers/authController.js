@@ -1,18 +1,11 @@
-/**
- * Auth Controller
- * Handles authentication requests from client
- * Interacts with User model and returns responses
- */
+
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'eventix_jwt_dev_secret';
 
-/**
- * Register new user
- * POST /api/auth/register
- */
+
 export const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
@@ -41,7 +34,7 @@ export const register = async (req, res, next) => {
       });
     }
 
-    // Hash password
+    // Hash password into 12 salt rounds which add strings every time there is a diffenrent salt which is added to password
     const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user
@@ -54,8 +47,10 @@ export const register = async (req, res, next) => {
 
     // Generate JWT
     const token = jwt.sign(
+      // this is payload
       { id: user._id, email: user.email },
       JWT_SECRET,
+      // this is when the token expires 
       { expiresIn: '7d' }
     );
 
@@ -75,10 +70,6 @@ export const register = async (req, res, next) => {
   }
 };
 
-/**
- * Login with email/password
- * POST /api/auth/login
- */
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -132,10 +123,7 @@ export const login = async (req, res, next) => {
   }
 };
 
-/**
- * Get current user
- * GET /api/auth/me
- */
+
 export const me = (req, res) => {
   const { _id, name, email, avatar, isAdmin } = req.user;
   res.json({ 
@@ -144,10 +132,7 @@ export const me = (req, res) => {
   });
 };
 
-/**
- * Logout
- * POST /api/auth/logout
- */
+
 export const logout = (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 };

@@ -11,32 +11,32 @@ import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 
-// Import configurations
+// Imported the configurations
 import connectDB from './config/database.js';
 
-// Import routes
+// Imported the routes
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 
-// Import middlewares
+// Imported the middlewares
 import { apiLimiter } from './middlewares/rateLimiter.js';
 import { notFound, errorHandler } from './middlewares/errorHandler.js';
 
-// Import models for cleanup job
+// Imported models for cleanup
 import Reservation from './models/Reservation.js';
 
-// Load environment variables
+// For loading environment variables
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Initialize Express app
+// Initializing express
 const app = express();
 const httpServer = createServer(app);
 
-// Initialize Socket.IO
+// Initializing Socket.IO
 const io = new SocketIO(httpServer, {
   cors: {
     origin: '*',
@@ -45,15 +45,11 @@ const io = new SocketIO(httpServer, {
   }
 });
 
-// Store io instance in app for access in controllers
 app.set('io', io);
 
-// Connect to MongoDB
 connectDB();
 
-// ============================================================================
-// MIDDLEWARES
-// ============================================================================
+
 
 // Security
 app.use(helmet({
@@ -61,7 +57,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// Disable caching for development (prevents CSP caching issues)
+// Disable caching for development
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -83,7 +79,7 @@ app.use(compression());
 // Logging
 app.use(morgan('dev'));
 
-// Rate limiting for API routes
+// Rate limiting for API 
 app.use('/api', apiLimiter);
 
 // Body parsing
@@ -100,24 +96,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// ============================================================================
-// STATIC FILES (Views)
-// ============================================================================
 
-// Serve CSS and JS files from public folder
+
+// CSS and JS files from public folder
 app.use(express.static(join(__dirname, 'public/css')));
 app.use(express.static(join(__dirname, 'public/js')));
 app.use(express.static(join(__dirname, 'public/images')));
 
-// Serve HTML views from views folder
+// HTML for views
 app.use(express.static(join(__dirname, 'views')));
 
 // Serve all public assets
 app.use(express.static(join(__dirname, 'public')));
 
-// ============================================================================
-// API ROUTES
-// ============================================================================
+
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -134,9 +126,7 @@ app.post('/api/users/login', (req, res, next) => {
   authRoutes(req, res, next);
 });
 
-// ============================================================================
-// SOCKET.IO
-// ============================================================================
+
 
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
@@ -165,9 +155,6 @@ io.on('connection', (socket) => {
   });
 });
 
-// ============================================================================
-// CLEANUP JOB
-// ============================================================================
 
 // Clean up expired reservations every minute
 setInterval(async () => {
@@ -197,16 +184,11 @@ setInterval(async () => {
   }
 }, 60 * 1000);
 
-// ============================================================================
-// ERROR HANDLING
-// ============================================================================
 
 app.use(notFound);
 app.use(errorHandler);
 
-// ============================================================================
-// START SERVER
-// ============================================================================
+
 
 httpServer.listen(PORT, () => {
   console.log('\n╔════════════════════════════════════════════════════════════╗');
