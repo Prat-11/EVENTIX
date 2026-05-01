@@ -1,10 +1,9 @@
 /**
  * User Controller
- * Handles user-related requests from client
- * Interacts with User and Event models
+ * Handles HTTP requests/responses for user operations
+ * Business logic is in userService
  */
-import User from '../models/User.js';
-import Event from '../models/Event.js';
+import * as userService from '../services/userService.js';
 
 /**
  * Get user profile
@@ -12,17 +11,12 @@ import Event from '../models/Event.js';
  */
 export const getProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
-    
-    if (!user) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'User not found' 
-      });
-    }
-
+    const user = await userService.getUserProfile(req.params.id);
     res.json({ success: true, data: user });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };
@@ -33,30 +27,18 @@ export const getProfile = async (req, res, next) => {
  */
 export const updateProfile = async (req, res, next) => {
   try {
-    // Check authorization
-    if (req.user._id.toString() !== req.params.id && !req.user.isAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Forbidden' 
-      });
-    }
-
-    const { name, avatar, phone, dob, location, bio, interests, notifications } = req.body;
+    const result = await userService.updateUserProfile(
+      req.params.id,
+      req.user._id.toString(),
+      req.user.isAdmin,
+      req.body
+    );
     
-    const updates = {};
-    if (name != null) updates.name = name;
-    if (avatar != null) updates.avatar = avatar;
-    if (phone != null) updates.phone = phone;
-    if (dob != null) updates.dob = dob;
-    if (location != null) updates.location = location;
-    if (bio != null) updates.bio = bio;
-    if (interests != null) updates.interests = interests;
-    if (notifications != null) updates.notifications = notifications;
-
-    await User.findByIdAndUpdate(req.params.id, updates, { new: true });
-
-    res.json({ success: true, message: 'Profile updated successfully' });
+    res.json({ success: true, message: result.message });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };
@@ -67,42 +49,17 @@ export const updateProfile = async (req, res, next) => {
  */
 export const getBookings = async (req, res, next) => {
   try {
-    // Check authorization
-    if (req.user._id.toString() !== req.params.id && !req.user.isAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Forbidden' 
-      });
-    }
-
-    // Find all events where user is enrolled
-    const events = await Event.find({
-      'enrollments.userId': req.params.id
-    });
-
-    // Map to booking format
-    const bookings = events.map(event => {
-      const enrollment = event.enrollments.find(
-        e => e.userId.toString() === req.params.id
-      );
-
-      return {
-        id: event._id.toString(),
-        eventId: event._id,
-        eventName: event.eventName,
-        organizerName: event.organizerName,
-        date: event.date,
-        category: event.category,
-        seats: enrollment.seats || [],
-        seatCount: enrollment.seatCount,
-        enrolledAt: enrollment.enrolledAt,
-        membersRequired: event.membersRequired,
-        enrolledMembers: event.enrolledMembers
-      };
-    });
-
+    const bookings = await userService.getUserBookings(
+      req.params.id,
+      req.user._id.toString(),
+      req.user.isAdmin
+    );
+    
     res.json({ success: true, data: bookings });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };

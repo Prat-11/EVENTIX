@@ -1,11 +1,9 @@
 /**
  * Event Controller
- * Handles event-related requests from client
- * Interacts with Event and Reservation models
+ * Handles HTTP requests/responses for event operations
+ * Business logic is in eventService
  */
-import mongoose from 'mongoose';
-import Event from '../models/Event.js';
-import Reservation from '../models/Reservation.js';
+import * as eventService from '../services/eventService.js';
 
 /**
  * Get all events
@@ -13,21 +11,8 @@ import Reservation from '../models/Reservation.js';
  */
 export const getAllEvents = async (req, res, next) => {
   try {
-    const events = await Event.find().sort({ createdAt: -1 });
-    // Transform _id to id for frontend compatibility
-    const eventsWithId = events.map(e => {
-      const obj = e.toObject();
-      obj.id = obj._id.toString();
-      // Convert userId in enrollments to string for frontend comparison
-      if (obj.enrollments && obj.enrollments.length > 0) {
-        obj.enrollments = obj.enrollments.map(enrollment => ({
-          ...enrollment,
-          userId: enrollment.userId.toString()
-        }));
-      }
-      return obj;
-    });
-    res.json({ success: true, data: eventsWithId });
+    const events = await eventService.getAllEvents();
+    res.json({ success: true, data: events });
   } catch (error) {
     next(error);
   }
@@ -39,33 +24,12 @@ export const getAllEvents = async (req, res, next) => {
  */
 export const createEvent = async (req, res, next) => {
   try {
-    const { eventName, date, membersRequired, description, category } = req.body;
-
-    if (!eventName || !date || !membersRequired) {
-      return res.status(400).json({
-        success: false,
-        error: 'eventName, date, and membersRequired are required'
-      });
-    }
-
-    const event = await Event.create({
-      organizerName: req.user.name,
-      organizerId: req.user._id,
-      eventName,
-      date,
-      description: description || '',
-      category: category || 'general',
-      membersRequired: parseInt(membersRequired, 10),
-      enrolledMembers: 0,
-      enrollments: []
-    });
-
-    // Transform _id to id for frontend compatibility
-    const eventObj = event.toObject();
-    eventObj.id = eventObj._id.toString();
-
-    res.status(201).json({ success: true, data: eventObj });
+    const event = await eventService.createEvent(req.user, req.body);
+    res.status(201).json({ success: true, data: event });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };
@@ -76,12 +40,7 @@ export const createEvent = async (req, res, next) => {
  */
 export const getReservations = async (req, res, next) => {
   try {
-    const now = new Date();
-    const reservations = await Reservation.find({
-      eventId: req.params.id,
-      expiresAt: { $gt: now }
-    });
-
+    const reservations = await eventService.getEventReservations(req.params.id);
     res.json({ success: true, data: reservations });
   } catch (error) {
     next(error);
@@ -95,95 +54,32 @@ export const getReservations = async (req, res, next) => {
 export const reserveSeats = async (req, res, next) => {
   try {
     const { seats = [] } = req.body;
-
-    if (!seats.length) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'No seats provided' 
-      });
-    }
-
-    if (seats.length > 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Maximum 10 seats per booking' 
-      });
-    }
-
-    // Check if event exists
-    const event = await Event.findById(req.params.id);
-    if (!event) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Event not found' 
-      });
-    }
-
-    // Check if seats are already taken
-    const takenSeats = new Set(
-      event.enrollments.flatMap(e => e.seats || [])
+    const result = await eventService.reserveSeats(
+      req.params.id,
+      req.user._id,
+      req.user.name,
+      seats
     );
-
-    const conflict = seats.find(s => takenSeats.has(s));
-    if (conflict) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Seat ${conflict} is already taken` 
-      });
-    }
-
-    // Check if seats are reserved by others
-    const now = new Date();
-    const reservations = await Reservation.find({
-      eventId: req.params.id,
-      expiresAt: { $gt: now },
-      userId: { $ne: req.user._id }
-    });
-
-    const reservedSeats = new Set(
-      reservations.flatMap(r => r.seats)
-    );
-
-    const reservedConflict = seats.find(s => reservedSeats.has(s));
-    if (reservedConflict) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Seat ${reservedConflict} is being held by another user` 
-      });
-    }
-
-    // Clear user's previous reservations for this event
-    await Reservation.deleteMany({
-      eventId: req.params.id,
-      userId: req.user._id
-    });
-
-    // Create new reservation (expires in 5 minutes)
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-    const reservation = await Reservation.create({
-      eventId: req.params.id,
-      userId: req.user._id,
-      userName: req.user.name,
-      seats,
-      expiresAt
-    });
 
     // Emit socket event (if io is available)
     if (req.app.get('io')) {
       req.app.get('io').to(`event:${req.params.id}`).emit('seats:reserved', {
-        eventId: req.params.id,
-        seats,
-        userId: req.user._id.toString(),
-        expiresAt: expiresAt.toISOString()
+        eventId: result.eventId,
+        seats: result.seats,
+        userId: result.userId,
+        expiresAt: result.expiresAt
       });
     }
 
     res.json({
       success: true,
-      reservationId: reservation._id,
-      expiresAt: expiresAt.toISOString()
+      reservationId: result.reservationId,
+      expiresAt: result.expiresAt
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };
@@ -194,22 +90,12 @@ export const reserveSeats = async (req, res, next) => {
  */
 export const clearReservation = async (req, res, next) => {
   try {
-    const result = await Reservation.find({
-      eventId: req.params.id,
-      userId: req.user._id
-    });
+    const result = await eventService.clearReservation(req.params.id, req.user._id);
 
-    const seats = result.flatMap(r => r.seats);
-
-    await Reservation.deleteMany({
-      eventId: req.params.id,
-      userId: req.user._id
-    });
-
-    if (seats.length > 0 && req.app.get('io')) {
+    if (result.seats.length > 0 && req.app.get('io')) {
       req.app.get('io').to(`event:${req.params.id}`).emit('seats:released', {
-        eventId: req.params.id,
-        seats
+        eventId: result.eventId,
+        seats: result.seats
       });
     }
 
@@ -224,125 +110,42 @@ export const clearReservation = async (req, res, next) => {
  * POST /api/events/:id/enroll
  */
 export const enrollInEvent = async (req, res, next) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
   try {
     const seats = req.body.seats || (req.body.seat ? [req.body.seat] : []);
-    const count = seats.length || 1;
-
-    if (count > 10) {
-      await session.abortTransaction();
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Maximum 10 seats per booking' 
-      });
-    }
-
-    // Find event
-    const event = await Event.findById(req.params.id).session(session);
-    if (!event) {
-      await session.abortTransaction();
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Event not found' 
-      });
-    }
-
-    // Check if already enrolled
-    const alreadyEnrolled = event.enrollments.some(
-      e => e.userId.toString() === req.user._id.toString()
-    );
-    if (alreadyEnrolled) {
-      await session.abortTransaction();
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Already enrolled in this event' 
-      });
-    }
-
-    // Check capacity
-    const spotsLeft = event.membersRequired - event.enrolledMembers;
-    if (spotsLeft < count) {
-      await session.abortTransaction();
-      return res.status(400).json({ 
-        success: false, 
-        error: `Only ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} remaining` 
-      });
-    }
-
-    // Check seat conflicts
-    if (seats.length > 0) {
-      const takenSeats = new Set(
-        event.enrollments.flatMap(e => e.seats || [])
-      );
-      const conflict = seats.find(s => takenSeats.has(s));
-      if (conflict) {
-        await session.abortTransaction();
-        return res.status(400).json({ 
-          success: false, 
-          error: `Seat ${conflict} already taken — pick another` 
-        });
-      }
-    }
-
-    // Add enrollment
-    event.enrollments.push({
-      userId: req.user._id,
-      userName: req.user.name,
-      userEmail: req.user.email,
-      seats: seats.length > 0 ? seats : [],
-      seatCount: count,
-      enrolledAt: new Date()
-    });
-    event.enrolledMembers += count;
-
-    await event.save({ session });
-
-    // Clear reservations
-    await Reservation.deleteMany({
-      eventId: req.params.id,
-      userId: req.user._id
-    }).session(session);
-
-    await session.commitTransaction();
+    const result = await eventService.enrollInEvent(req.params.id, req.user, seats);
 
     // Emit socket events
     if (req.app.get('io')) {
       const io = req.app.get('io');
       
-      seats.forEach(seat => {
+      result.seats.forEach(seat => {
         io.to(`event:${req.params.id}`).emit('seat:taken', {
-          eventId: req.params.id,
+          eventId: result.eventId,
           seat,
-          userId: req.user._id.toString()
+          userId: result.userId
         });
       });
 
       io.to(`event:${req.params.id}`).emit('event:update', {
         id: req.params.id,
-        enrolledMembers: event.enrolledMembers,
-        membersRequired: event.membersRequired,
-        spotsLeft: event.membersRequired - event.enrolledMembers,
-        isFull: event.enrolledMembers >= event.membersRequired
+        enrolledMembers: result.event.enrolledMembers,
+        membersRequired: result.event.membersRequired,
+        spotsLeft: result.event.membersRequired - result.event.enrolledMembers,
+        isFull: result.event.enrolledMembers >= result.event.membersRequired
       });
     }
 
-    // Transform event for response
-    const eventObj = event.toObject();
-    eventObj.id = eventObj._id.toString();
-
     res.json({
       success: true,
-      message: `${count} seat${count > 1 ? 's' : ''} booked successfully`,
-      seats,
-      event: eventObj
+      message: result.message,
+      seats: result.seats,
+      event: result.event
     });
   } catch (error) {
-    await session.abortTransaction();
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
-  } finally {
-    session.endSession();
   }
 };
 
@@ -352,33 +155,24 @@ export const enrollInEvent = async (req, res, next) => {
  */
 export const deleteEvent = async (req, res, next) => {
   try {
-    const event = await Event.findById(req.params.id);
-    
-    if (!event) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Event not found' 
-      });
-    }
-
-    if (event.organizerId.toString() !== req.user._id.toString() && !req.user.isAdmin) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Forbidden' 
-      });
-    }
-
-    await Event.findByIdAndDelete(req.params.id);
+    const result = await eventService.deleteEvent(
+      req.params.id,
+      req.user._id,
+      req.user.isAdmin
+    );
     
     if (req.app.get('io')) {
       req.app.get('io').emit('event:deleted', { 
-        id: req.params.id,
-        _id: req.params.id 
+        id: result.eventId,
+        _id: result.eventId 
       });
     }
     
     res.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, error: error.message });
+    }
     next(error);
   }
 };

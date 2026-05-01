@@ -26,6 +26,9 @@ import { notFound, errorHandler } from './middlewares/errorHandler.js';
 // Imported models for cleanup
 import Reservation from './models/Reservation.js';
 
+// Imported services
+import * as eventService from './services/eventService.js';
+
 // For loading environment variables
 dotenv.config();
 
@@ -159,26 +162,16 @@ io.on('connection', (socket) => {
 // Clean up expired reservations every minute
 setInterval(async () => {
   try {
-    const now = new Date();
-    const expired = await Reservation.find({ expiresAt: { $lte: now } });
+    const { count, released } = await eventService.cleanupExpiredReservations();
 
-    if (expired.length === 0) return;
-
-    const released = {};
-    expired.forEach(r => {
-      const eventId = r.eventId.toString();
-      if (!released[eventId]) released[eventId] = [];
-      released[eventId].push(...r.seats);
-    });
-
-    await Reservation.deleteMany({ expiresAt: { $lte: now } });
+    if (count === 0) return;
 
     // Emit socket events
     Object.entries(released).forEach(([eventId, seats]) => {
       io.to(`event:${eventId}`).emit('seats:released', { eventId, seats });
     });
 
-    console.log(`🧹 Cleaned up ${expired.length} expired reservations`);
+    console.log(`🧹 Cleaned up ${count} expired reservations`);
   } catch (error) {
     console.error('Cleanup job error:', error.message);
   }
@@ -198,13 +191,14 @@ httpServer.listen(PORT, () => {
   console.log(`  🔌  Socket.IO           →  ws://localhost:${PORT}`);
   console.log(`  📦  Client              →  http://localhost:${PORT}/home.html`);
   console.log(`  🗄️   Database            →  MongoDB`);
-  console.log('\n  📁  MVC Architecture:');
-  console.log('      Models              →  /models');
-  console.log('      Views               →  /public + /client');
-  console.log('      Controllers         →  /controllers');
-  console.log('      Routes              →  /routes');
-  console.log('      Middlewares         →  /middlewares');
-  console.log('      Config              →  /config\n');
+  console.log('\n  📁  MVC + Service Architecture:');
+  console.log('      Models              →  /models (schemas)');
+  console.log('      Views               →  /views + /public (frontend)');
+  console.log('      Controllers         →  /controllers (HTTP handlers)');
+  console.log('      Services            →  /services (business logic)');
+  console.log('      Routes              →  /routes (URL mappings)');
+  console.log('      Middlewares         →  /middlewares (interceptors)');
+  console.log('      Config              →  /config (database)\n');
 });
 
 export default app;
