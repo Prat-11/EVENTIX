@@ -1,20 +1,11 @@
-/**
- * Error Handler Middleware
- * Centralized error handling
- */
 
-/**
- * 404 Not Found Handler
- */
 export const notFound = (req, res, next) => {
   const error = new Error(`Not found: ${req.method} ${req.originalUrl}`);
   error.status = 404;
   next(error);
 };
 
-/**
- * Global Error Handler
- */
+
 export const errorHandler = (err, req, res, next) => {
   const status = err.status || 500;
   const message = err.message || 'Internal Server Error';

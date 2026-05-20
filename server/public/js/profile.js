@@ -58,12 +58,38 @@ async function loadProfile() {
 document.getElementById('avatarWrap').addEventListener('click', () => {
   document.getElementById('avatarInput').click();
 });
-document.getElementById('avatarInput').addEventListener('change', e => {
+document.getElementById('avatarInput').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
+
+  // show preview immediately while uploading
   const reader = new FileReader();
   reader.onload = ev => { document.getElementById('avatarImg').src = ev.target.result; };
   reader.readAsDataURL(file);
+
+  // upload to Cloudinary via our backend
+  const formData = new FormData();
+  formData.append('avatar', file);
+
+  try {
+    const res = await fetch(`${API}/users/${currentUser.id}/avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` }, // no Content-Type — browser sets it
+      body: formData
+    });
+    const data = await res.json();
+    if (data.success) {
+      // update avatar in localStorage so nav shows new pic
+      currentUser.avatar = data.data.avatar;
+      localStorage.setItem('user', JSON.stringify(currentUser));
+      document.getElementById('avatarImg').src = data.data.avatar;
+      showToast('Avatar updated!', 'success');
+    } else {
+      showToast(data.error || 'Upload failed', 'error');
+    }
+  } catch (err) {
+    showToast('Upload error', 'error');
+  }
 });
 
 // ── Save profile ──────────────────────────────────────────────────────────────
@@ -78,7 +104,6 @@ document.getElementById('profileForm').addEventListener('submit', async e => {
 
   const payload = {
     name:          document.getElementById('fullName').value,
-    avatar:        document.getElementById('avatarImg').src,
     phone:         document.getElementById('phone').value,
     dob:           document.getElementById('dob').value,
     location:      document.getElementById('location').value,

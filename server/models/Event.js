@@ -1,76 +1,77 @@
 /**
- * Event Model - Schema Definition
- * Defines the structure of event data in MongoDB
+ * Event Model - Sequelize Definition
+ * Defines the structure of event data in PostgreSQL
  */
-import mongoose from 'mongoose';
+// event model (for events table)
+import { DataTypes } from 'sequelize'; // datatypes for fields
+import { sequelize } from '../config/database.js'; // db connection
 
-const enrollmentSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+// define event model
+const Event = sequelize.define('Event', {
+  id: {
+    type: DataTypes.UUID, // unique id
+    defaultValue: DataTypes.UUIDV4, // auto uuid
+    primaryKey: true // primary key
   },
-  userName: String,
-  userEmail: String,
-  seats: [String],
-  seatCount: {
-    type: Number,
-    default: 1
-  },
-  enrolledAt: {
-    type: Date,
-    default: Date.now
-  }
-}, { _id: false });
-
-const eventSchema = new mongoose.Schema({
   organizerName: {
-    type: String,
-    required: true
+    type: DataTypes.STRING, // name of organizer
+    allowNull: false // required
   },
   organizerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: DataTypes.UUID, // user id
+    allowNull: false, // required
+    references: {
+      model: 'Users', // ref users
+      key: 'id'
+    }
   },
   eventName: {
-    type: String,
-    required: [true, 'Event name is required'],
-    trim: true
+    type: DataTypes.STRING, // event name
+    allowNull: false, // required
+    trim: true // remove spaces
   },
   date: {
-    type: String,
-    required: [true, 'Event date is required']
+    type: DataTypes.DATE, // event date
+    allowNull: false // required
   },
   description: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT, // event desc
+    allowNull: true // optional
   },
   category: {
-    type: String,
-    enum: ['music', 'tech', 'sports', 'food', 'general'],
-    default: 'general'
+    type: DataTypes.ENUM('music', 'tech', 'sports', 'food', 'general'), // type
+    defaultValue: 'general' // default
+  },
+  image: {
+    type: DataTypes.STRING, // image url
+    allowNull: true // optional
+  },
+  imagePublicId: {
+    type: DataTypes.STRING, // cloudinary id
+    allowNull: true // optional
   },
   membersRequired: {
-    type: Number,
-    required: [true, 'Members required is mandatory'],
-    min: [1, 'At least 1 member required']
+    type: DataTypes.INTEGER, // total members
+    allowNull: false, // required
+    validate: {
+      min: 1 // at least 1
+    }
   },
   enrolledMembers: {
-    type: Number,
-    default: 0
+    type: DataTypes.INTEGER, // joined
+    defaultValue: 0 // default 0
   },
-  enrollments: [enrollmentSchema]
+  location: {
+    type: DataTypes.STRING, // event location
+    allowNull: true // optional
+  },
+  status: {
+    type: DataTypes.ENUM('upcoming', 'ongoing', 'completed', 'cancelled'), // status
+    defaultValue: 'upcoming' // default
+  }
 }, {
-  timestamps: true
+  timestamps: true, // auto add createdAt/updatedAt
+  underscored: false // camelCase fields
 });
 
-// Indexes for faster queries
-eventSchema.index({ organizerId: 1 });
-eventSchema.index({ date: 1 });
-eventSchema.index({ category: 1 });
-eventSchema.index({ createdAt: -1 });
-
-const Event = mongoose.model('Event', eventSchema);
-
-export default Event;
+export default Event; // export model

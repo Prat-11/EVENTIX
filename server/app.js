@@ -1,48 +1,61 @@
+// main app file (server)
 
 import express from 'express';
 import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
+
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 
-// Imported the configurations
-import connectDB from './config/database.js';
+// Make crypto globally available
+if (typeof globalThis.crypto === 'undefined') {
+  global.crypto = crypto;
+}
 
-// Imported the routes
+// Config
+import { connectDB } from './config/database.js';
+
+// Routes
 import authRoutes from './routes/authRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 
-// Imported the middlewares
+// Middlewares
 import { apiLimiter } from './middlewares/rateLimiter.js';
 import { notFound, errorHandler } from './middlewares/errorHandler.js';
 
-// Imported models for cleanup
-import Reservation from './models/Reservation.js';
-
-// Imported services
+// Services
 import * as eventService from './services/eventService.js';
 
-// For loading environment variables
+// Load environment variables
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Initializing express
+// Initialize express
 const app = express();
 const httpServer = createServer(app);
 
-// Initializing Socket.IO
+// ==============================
+// SOCKET.IO
+// ==============================
+
 const io = new SocketIO(httpServer, {
+  transports: ['websocket', 'polling'],
+
   cors: {
-    origin: '*',
+    origin: process.env.FRONTEND_URL || '*',
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -50,75 +63,140 @@ const io = new SocketIO(httpServer, {
 
 app.set('io', io);
 
-connectDB();
+// ==============================
+// DATABASE
+// ==============================
 
+await connectDB();
 
+// ==============================
+// SECURITY
+// ==============================
 
-// Security
-app.use(helmet({
-  contentSecurityPolicy: false,
-  crossOriginEmbedderPolicy: false
-}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+  })
+);
 
-// Disable caching for development
+// Disable caching in development
 app.use((req, res, next) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate'
+  );
+
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   res.setHeader('Surrogate-Control', 'no-store');
+
   next();
 });
 
+// ==============================
 // CORS
-app.use(cors({
-  origin: '*',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-}));
+// ==============================
 
-// Compression
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+  })
+);
+
+// ==============================
+// MIDDLEWARES
+// ==============================
+
 app.use(compression());
 
-// Logging
-app.use(morgan('dev'));
+app.use(
+  morgan(NODE_ENV === 'production' ? 'combined' : 'dev')
+);
 
-// Rate limiting for API 
+// Rate limiter
 app.use('/api', apiLimiter);
 
-// Body parsing
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// IMPORTANT:
+// DO NOT USE express-fileupload
+// multer handles uploads separately
 
-// Cookie parsing
+// JSON parsing
+app.use(
+  express.json({
+    limit: '10mb'
+  })
+);
+
+// URL encoded parsing
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: '10mb'
+  })
+);
+
+// Cookies
 app.use(cookieParser(process.env.SESSION_SECRET));
 
-// Request ID and timestamp
+// Request metadata
 app.use((req, res, next) => {
   req.requestTime = new Date().toISOString();
-  req.requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  req.requestId = `${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+
   next();
 });
 
+// ==============================
+// STATIC FILES
+// ==============================
 
-
-// CSS and JS files from public folder
 app.use(express.static(join(__dirname, 'public/css')));
 app.use(express.static(join(__dirname, 'public/js')));
 app.use(express.static(join(__dirname, 'public/images')));
 
-// HTML for views
 app.use(express.static(join(__dirname, 'views')));
 
-// Serve all public assets
 app.use(express.static(join(__dirname, 'public')));
 
+// ==============================
+// ROUTES
+// ==============================
 
+// Home
+app.get('/', (req, res) => {
+  res.redirect('/home.html');
+});
 
+// Dashboard
+app.get('/dashboard', (req, res) => {
+  res.redirect('/bookings.html');
+});
+
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/events', eventRoutes);
 
-// Legacy route redirects for backward compatibility
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: NODE_ENV,
+    database: 'PostgreSQL'
+  });
+});
+
+// ==============================
+// LEGACY ROUTES
+// ==============================
+
 app.post('/api/users/register', (req, res, next) => {
   req.url = '/api/auth/register';
   authRoutes(req, res, next);
@@ -129,7 +207,9 @@ app.post('/api/users/login', (req, res, next) => {
   authRoutes(req, res, next);
 });
 
-
+// ==============================
+// SOCKET EVENTS
+// ==============================
 
 io.on('connection', (socket) => {
   console.log(`🔌 Socket connected: ${socket.id}`);
@@ -137,68 +217,102 @@ io.on('connection', (socket) => {
   // Join event room
   socket.on('join:event', (eventId) => {
     socket.join(`event:${eventId}`);
-    console.log(`Socket ${socket.id} joined event:${eventId}`);
+
+    console.log(
+      `Socket ${socket.id} joined event:${eventId}`
+    );
   });
 
   // Leave event room
   socket.on('leave:event', (eventId) => {
     socket.leave(`event:${eventId}`);
-    console.log(`Socket ${socket.id} left event:${eventId}`);
+
+    console.log(
+      `Socket ${socket.id} left event:${eventId}`
+    );
   });
 
-  // Join admin room
+  // Admin room
   socket.on('join:admin', () => {
     socket.join('admin');
-    console.log(`Socket ${socket.id} joined admin room`);
+
+    console.log(
+      `Socket ${socket.id} joined admin room`
+    );
   });
 
   // Disconnect
   socket.on('disconnect', (reason) => {
-    console.log(`🔌 Socket disconnected: ${socket.id} (${reason})`);
+    console.log(
+      `🔌 Socket disconnected: ${socket.id} (${reason})`
+    );
   });
 });
 
+// ==============================
+// CLEANUP JOB
+// ==============================
 
-// Clean up expired reservations every minute
 setInterval(async () => {
   try {
-    const { count, released } = await eventService.cleanupExpiredReservations();
+    const { count, released } =
+      await eventService.cleanupExpiredReservations();
 
     if (count === 0) return;
 
-    // Emit socket events
-    Object.entries(released).forEach(([eventId, seats]) => {
-      io.to(`event:${eventId}`).emit('seats:released', { eventId, seats });
-    });
+    // Emit updates
+    Object.entries(released).forEach(
+      ([eventId, seats]) => {
+        io.to(`event:${eventId}`).emit(
+          'seats:released',
+          {
+            eventId,
+            seats
+          }
+        );
+      }
+    );
 
-    console.log(`🧹 Cleaned up ${count} expired reservations`);
+    console.log(
+      `🧹 Cleaned up ${count} expired reservations`
+    );
   } catch (error) {
-    console.error('Cleanup job error:', error.message);
+    console.error(
+      'Cleanup job error:',
+      error.message
+    );
   }
 }, 60 * 1000);
 
+// ==============================
+// ERROR HANDLING
+// ==============================
 
 app.use(notFound);
 app.use(errorHandler);
 
-
+// ==============================
+// START SERVER
+// ==============================
 
 httpServer.listen(PORT, () => {
-  console.log('\n╔════════════════════════════════════════════════════════════╗');
-  console.log('║                    EVENTIX SERVER                          ║');
-  console.log('╚════════════════════════════════════════════════════════════╝\n');
-  console.log(`  🚀  Server running      →  http://localhost:${PORT}`);
-  console.log(`  🔌  Socket.IO           →  ws://localhost:${PORT}`);
-  console.log(`  📦  Client              →  http://localhost:${PORT}/home.html`);
-  console.log(`  🗄️   Database            →  MongoDB`);
-  console.log('\n  📁  MVC + Service Architecture:');
-  console.log('      Models              →  /models (schemas)');
-  console.log('      Views               →  /views + /public (frontend)');
-  console.log('      Controllers         →  /controllers (HTTP handlers)');
-  console.log('      Services            →  /services (business logic)');
-  console.log('      Routes              →  /routes (URL mappings)');
-  console.log('      Middlewares         →  /middlewares (interceptors)');
-  console.log('      Config              →  /config (database)\n');
+  console.log('\n═══════════════════════════════');
+  console.log('🚀 EVENTIX SERVER STARTED');
+  console.log('═══════════════════════════════\n');
+
+  console.log(
+    `🌐 Server      → http://localhost:${PORT}`
+  );
+
+  console.log(
+    `🔌 Socket.IO   → ws://localhost:${PORT}`
+  );
+
+  console.log(
+    `📦 Environment → ${NODE_ENV}`
+  );
+
+  console.log('\n✅ Ready\n');
 });
 
 export default app;

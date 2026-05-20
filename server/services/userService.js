@@ -1,83 +1,87 @@
-/**
- * User Service
- * Contains all user-related business logic
- */
-import User from '../models/User.js';
-import Event from '../models/Event.js';
+// userService.js — all user profile logic lives here
+import { db } from '../config/database.js';
+import { deleteImage } from '../config/cloudinary.js';
 
-/**
- * Get user profile by ID
- */
+// ── Get profile ───────────────────────────────────────────────────────────────
 export const getUserProfile = async (userId) => {
-  const user = await User.findById(userId).select('-password');
-  
-  if (!user) {
-    throw { status: 404, message: 'User not found' };
-  }
-
-  return user;
+  const result = await db.query(
+    'SELECT id, name, email, avatar, phone, dob, location, bio, interests, notifications, is_admin, created_at FROM users WHERE id = $1',
+    [userId]
+  );
+  if (!result.rows[0]) throw { status: 404, message: 'User not found' };
+  return result.rows[0];
 };
 
-/**
- * Update user profile
- */
+// ── Update profile ────────────────────────────────────────────────────────────
 export const updateUserProfile = async (userId, requesterId, isAdmin, updates) => {
-  // Check authorization
-  if (requesterId !== userId && !isAdmin) {
-    throw { status: 403, message: 'Forbidden' };
-  }
+  // only the user themselves or an admin can update
+  if (requesterId !== userId && !isAdmin) throw { status: 403, message: 'Forbidden' };
 
-  const { name, avatar, phone, dob, location, bio, interests, notifications } = updates;
-  
-  const updateData = {};
-  if (name != null) updateData.name = name;
-  if (avatar != null) updateData.avatar = avatar;
-  if (phone != null) updateData.phone = phone;
-  if (dob != null) updateData.dob = dob;
-  if (location != null) updateData.location = location;
-  if (bio != null) updateData.bio = bio;
-  if (interests != null) updateData.interests = interests;
-  if (notifications != null) updateData.notifications = notifications;
+  const { name, phone, dob, location, bio, interests, notifications } = updates;
 
-  await User.findByIdAndUpdate(userId, updateData, { new: true });
+  // build dynamic SET clause — only update fields that were sent
+  const fields = [];
+  const values = [];
+  let i = 1;
+
+  if (name != null)          { fields.push(`name = $${i++}`);          values.push(name); }
+  if (phone != null)         { fields.push(`phone = $${i++}`);         values.push(phone); }
+  if (dob != null)           { fields.push(`dob = $${i++}`);           values.push(dob); }
+  if (location != null)      { fields.push(`location = $${i++}`);      values.push(location); }
+  if (bio != null)           { fields.push(`bio = $${i++}`);           values.push(bio); }
+  if (interests != null)     { fields.push(`interests = $${i++}`);     values.push(JSON.stringify(interests)); }
+  if (notifications != null) { fields.push(`notifications = $${i++}`); values.push(notifications); }
+
+  if (fields.length === 0) return { message: 'Nothing to update' };
+
+  values.push(userId); // last param is the WHERE clause
+  await db.query(`UPDATE users SET ${fields.join(', ')} WHERE id = $${i}`, values);
 
   return { message: 'Profile updated successfully' };
 };
 
-/**
- * Get user's bookings
- */
+// ── Upload avatar (called after Cloudinary upload) ────────────────────────────
+export const updateAvatar = async (userId, avatarUrl, avatarPublicId) => {
+  // get old avatar public_id so we can delete it from Cloudinary
+  const old = await db.query('SELECT avatar_public_id FROM users WHERE id = $1', [userId]);
+  const oldPublicId = old.rows[0]?.avatar_public_id;
+
+  // save new avatar URL and public_id to DB
+  await db.query(
+    'UPDATE users SET avatar = $1, avatar_public_id = $2 WHERE id = $3',
+    [avatarUrl, avatarPublicId, userId]
+  );
+
+  // delete old image from Cloudinary (don't block response)
+  if (oldPublicId) deleteImage(oldPublicId);
+
+  return { avatar: avatarUrl };
+};
+
+// ── Get user bookings ─────────────────────────────────────────────────────────
 export const getUserBookings = async (userId, requesterId, isAdmin) => {
-  // Check authorization
-  if (requesterId !== userId && !isAdmin) {
-    throw { status: 403, message: 'Forbidden' };
-  }
+  if (requesterId !== userId && !isAdmin) throw { status: 403, message: 'Forbidden' };
 
-  // Find all events where user is enrolled
-  const events = await Event.find({
-    'enrollments.userId': userId
-  });
+  // JOIN enrollments with events to get full booking info
+  const result = await db.query(
+    `SELECT
+       e.id,
+       e.event_name   AS "eventName",
+       e.organizer_name AS "organizerName",
+       e.date,
+       e.category,
+       e.image,
+       e.members_required AS "membersRequired",
+       e.enrolled_members AS "enrolledMembers",
+       en.seats,
+       en.seat_count  AS "seatCount",
+       en.enrolled_at AS "enrolledAt"
+     FROM enrollments en
+     JOIN events e ON e.id = en.event_id
+     WHERE en.user_id = $1
+     ORDER BY en.enrolled_at DESC`,
+    [userId]
+  );
 
-  // Map to booking format
-  const bookings = events.map(event => {
-    const enrollment = event.enrollments.find(
-      e => e.userId.toString() === userId
-    );
-
-    return {
-      id: event._id.toString(),
-      eventId: event._id,
-      eventName: event.eventName,
-      organizerName: event.organizerName,
-      date: event.date,
-      category: event.category,
-      seats: enrollment.seats || [],
-      seatCount: enrollment.seatCount,
-      enrolledAt: enrollment.enrolledAt,
-      membersRequired: event.membersRequired,
-      enrolledMembers: event.enrolledMembers
-    };
-  });
-
-  return bookings;
+  return result.rows;
 };

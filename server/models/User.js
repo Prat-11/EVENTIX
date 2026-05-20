@@ -1,81 +1,112 @@
 /**
- * User Model - Schema Definition
- * Defines the structure of user data in MongoDB
+ * User Model - Sequelize Definition
+ * Defines the structure of user data in PostgreSQL
  */
-import mongoose from 'mongoose';
+// user model (for users table)
+import { DataTypes } from 'sequelize'; // datatypes for fields
+import { sequelize } from '../config/database.js'; // db connection
+import bcryptjs from 'bcryptjs'; // for hashing passwords
 
-const userSchema = new mongoose.Schema({
+// define user model
+const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.UUID, // unique id
+    defaultValue: DataTypes.UUIDV4, // auto uuid
+    primaryKey: true // primary key
+  },
   name: {
-    type: String,
-    required: [true, 'Name is required'],
-    trim: true
+    type: DataTypes.STRING, // name
+    allowNull: false, // required
+    trim: true // remove spaces
   },
   email: {
-    type: String,
-    required: [true, 'Email is required'],
-    unique: true,
-    lowercase: true,
-    trim: true,
-    match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']
-  },
-  password: {
-    type: String,
-    required: [true, 'Password is required'],
-    minlength: 6
-  },
-  firebaseUid: {
-    type: String,
-    default: null
-  },
-  avatar: {
-    type: String,
-    default: function() {
-      return `https://ui-avatars.com/api/?name=${encodeURIComponent(this.name)}&background=6366f1&color=fff`;
+    type: DataTypes.STRING, // email
+    allowNull: false, // required
+    unique: true, // must be unique
+    lowercase: true, // always lowercase
+    trim: true, // remove spaces
+    validate: {
+      isEmail: true // must be email
     }
   },
+  password: {
+    type: DataTypes.STRING, // hashed password
+    allowNull: false // required
+  },
+  firebaseUid: {
+    type: DataTypes.STRING, // firebase id
+    allowNull: true // optional
+  },
+  avatar: {
+    type: DataTypes.STRING, // avatar url
+    allowNull: true // optional
+  },
+  avatarPublicId: {
+    type: DataTypes.STRING, // cloudinary id
+    allowNull: true // optional
+  },
   phone: {
-    type: String,
-    default: ''
+    type: DataTypes.STRING, // phone number
+    allowNull: true // optional
   },
   dob: {
-    type: String,
-    default: ''
+    type: DataTypes.DATE, // date of birth
+    allowNull: true // optional
   },
   location: {
-    type: String,
-    default: ''
+    type: DataTypes.STRING, // location
+    allowNull: true // optional
   },
   bio: {
-    type: String,
-    default: ''
+    type: DataTypes.TEXT, // bio
+    allowNull: true // optional
   },
   interests: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON, // array of interests
+    defaultValue: [] // default empty
   },
   notifications: {
-    type: String,
-    enum: ['all', 'important', 'none'],
-    default: 'all'
+    type: DataTypes.ENUM('all', 'important', 'none'), // notif type
+    defaultValue: 'all' // default all
   },
   blocked: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN, // blocked or not
+    defaultValue: false // default not blocked
   },
   isAdmin: {
-    type: Boolean,
-    default: false
+    type: DataTypes.BOOLEAN, // admin or not
+    defaultValue: false // default not admin
   },
-  blockedAt: Date,
-  unblockedAt: Date
+  blockedAt: {
+    type: DataTypes.DATE, // when blocked
+    allowNull: true // optional
+  },
+  unblockedAt: {
+    type: DataTypes.DATE, // when unblocked
+    allowNull: true // optional
+  }
 }, {
-  timestamps: true // Adds createdAt and updatedAt automatically
+  timestamps: true, // auto add createdAt/updatedAt
+  underscored: false, // camelCase fields
+  hooks: {
+    beforeCreate: async (user) => {
+      if (user.password) {
+        const salt = await bcryptjs.genSalt(10); // make salt
+        user.password = await bcryptjs.hash(user.password, salt); // hash pass
+      }
+    },
+    beforeUpdate: async (user) => {
+      if (user.changed('password')) {
+        const salt = await bcryptjs.genSalt(10); // make salt
+        user.password = await bcryptjs.hash(user.password, salt); // hash pass
+      }
+    }
+  }
 });
 
-// Indexes for faster queries
-userSchema.index({ email: 1 });
-userSchema.index({ firebaseUid: 1 });
+// compare password method
+User.prototype.comparePassword = async function(password) {
+  return await bcryptjs.compare(password, this.password); // true if match
+};
 
-const User = mongoose.model('User', userSchema);
-
-export default User;
+export default User; // export model

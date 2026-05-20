@@ -1,178 +1,111 @@
-/**
- * Event Controller
- * Handles HTTP requests/responses for event operations
- * Business logic is in eventService
- */
+// eventController.js — handles HTTP for events, calls eventService for logic
 import * as eventService from '../services/eventService.js';
 
-/**
- * Get all events
- * GET /api/events
- */
+// GET /api/events
 export const getAllEvents = async (req, res, next) => {
   try {
     const events = await eventService.getAllEvents();
     res.json({ success: true, data: events });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 };
 
-/**
- * Create new event
- * POST /api/events
- */
+// POST /api/events — supports optional image upload via multipart/form-data
 export const createEvent = async (req, res, next) => {
   try {
-    const event = await eventService.createEvent(req.user, req.body);
+    // if image was uploaded, req.file has the Cloudinary result
+    const imageUrl      = req.file?.path     || null;
+    const imagePublicId = req.file?.filename || null;
+
+    const event = await eventService.createEvent(req.user, req.body, imageUrl, imagePublicId);
     res.status(201).json({ success: true, data: event });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
-/**
- * Get event reservations
- * GET /api/events/:id/reservations
- */
+// GET /api/events/:id/reservations
 export const getReservations = async (req, res, next) => {
   try {
     const reservations = await eventService.getEventReservations(req.params.id);
     res.json({ success: true, data: reservations });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 };
 
-/**
- * Reserve seats
- * POST /api/events/:id/reserve
- */
+// POST /api/events/:id/reserve
 export const reserveSeats = async (req, res, next) => {
   try {
     const { seats = [] } = req.body;
-    const result = await eventService.reserveSeats(
-      req.params.id,
-      req.user._id,
-      req.user.name,
-      seats
-    );
+    const result = await eventService.reserveSeats(req.params.id, req.user.id, req.user.name, seats);
 
-    // Emit socket event (if io is available)
-    if (req.app.get('io')) {
-      req.app.get('io').to(`event:${req.params.id}`).emit('seats:reserved', {
-        eventId: result.eventId,
-        seats: result.seats,
-        userId: result.userId,
-        expiresAt: result.expiresAt
-      });
-    }
-
-    res.json({
-      success: true,
-      reservationId: result.reservationId,
+    // tell all users watching this event that these seats are now reserved
+    req.app.get('io')?.to(`event:${req.params.id}`).emit('seats:reserved', {
+      eventId: result.eventId,
+      seats:   result.seats,
+      userId:  result.userId,
       expiresAt: result.expiresAt
     });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+
+    res.json({ success: true, reservationId: result.reservationId, expiresAt: result.expiresAt });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
-/**
- * Clear reservation
- * DELETE /api/events/:id/reserve
- */
+// DELETE /api/events/:id/reserve
 export const clearReservation = async (req, res, next) => {
   try {
-    const result = await eventService.clearReservation(req.params.id, req.user._id);
+    const result = await eventService.clearReservation(req.params.id, req.user.id);
 
-    if (result.seats.length > 0 && req.app.get('io')) {
-      req.app.get('io').to(`event:${req.params.id}`).emit('seats:released', {
+    if (result.seats.length > 0) {
+      req.app.get('io')?.to(`event:${req.params.id}`).emit('seats:released', {
         eventId: result.eventId,
-        seats: result.seats
+        seats:   result.seats
       });
     }
 
     res.json({ success: true, message: 'Reservation cleared' });
-  } catch (error) {
-    next(error);
-  }
+  } catch (err) { next(err); }
 };
 
-/**
- * Enroll in event (with MongoDB transaction)
- * POST /api/events/:id/enroll
- */
+// POST /api/events/:id/enroll
 export const enrollInEvent = async (req, res, next) => {
   try {
-    const seats = req.body.seats || (req.body.seat ? [req.body.seat] : []);
+    const seats  = req.body.seats || (req.body.seat ? [req.body.seat] : []);
     const result = await eventService.enrollInEvent(req.params.id, req.user, seats);
 
-    // Emit socket events
-    if (req.app.get('io')) {
-      const io = req.app.get('io');
-      
-      result.seats.forEach(seat => {
-        io.to(`event:${req.params.id}`).emit('seat:taken', {
-          eventId: result.eventId,
-          seat,
-          userId: result.userId
-        });
-      });
-
+    const io = req.app.get('io');
+    if (io) {
+      // tell everyone each seat is now permanently taken
+      result.seats.forEach(seat =>
+        io.to(`event:${req.params.id}`).emit('seat:taken', { eventId: result.eventId, seat, userId: result.userId })
+      );
+      // update the event card stats for everyone
       io.to(`event:${req.params.id}`).emit('event:update', {
-        id: req.params.id,
+        id:              req.params.id,
         enrolledMembers: result.event.enrolledMembers,
         membersRequired: result.event.membersRequired,
-        spotsLeft: result.event.membersRequired - result.event.enrolledMembers,
-        isFull: result.event.enrolledMembers >= result.event.membersRequired
+        spotsLeft:       result.event.membersRequired - result.event.enrolledMembers,
+        isFull:          result.event.enrolledMembers >= result.event.membersRequired
       });
     }
 
-    res.json({
-      success: true,
-      message: result.message,
-      seats: result.seats,
-      event: result.event
-    });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+    res.json({ success: true, message: result.message, seats: result.seats, event: result.event });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
-/**
- * Delete event
- * DELETE /api/events/:id
- */
+// DELETE /api/events/:id
 export const deleteEvent = async (req, res, next) => {
   try {
-    const result = await eventService.deleteEvent(
-      req.params.id,
-      req.user._id,
-      req.user.isAdmin
-    );
-    
-    if (req.app.get('io')) {
-      req.app.get('io').emit('event:deleted', { 
-        id: result.eventId,
-        _id: result.eventId 
-      });
-    }
-    
+    const result = await eventService.deleteEvent(req.params.id, req.user.id, req.user.is_admin);
+    req.app.get('io')?.emit('event:deleted', { id: result.eventId });
     res.json({ success: true, message: 'Event deleted successfully' });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };

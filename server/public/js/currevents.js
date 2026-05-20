@@ -707,15 +707,23 @@ document.getElementById('createForm').addEventListener('submit', async e => {
   const btn = document.getElementById('createSubmit');
   btn.disabled = true; btn.textContent = 'Launching…';
   try {
+    // use FormData so we can send both text fields AND an image file
+    const formData = new FormData();
+    formData.append('eventName',       document.getElementById('evName').value);
+    formData.append('date',            document.getElementById('evDate').value);
+    formData.append('membersRequired', document.getElementById('evCapacity').value);
+    formData.append('category',        document.getElementById('evCategory').value);
+    formData.append('description',     document.getElementById('evDesc').value);
+
+    // attach image if user picked one
+    const imgFile = document.getElementById('evImage')?.files[0];
+    if (imgFile) formData.append('image', imgFile);
+
+    // don't set Content-Type header — browser sets it automatically with boundary for FormData
     const res = await fetch(`${API}/events`, {
-      method: 'POST', headers: H(),
-      body: JSON.stringify({
-        eventName:       document.getElementById('evName').value,
-        date:            document.getElementById('evDate').value,
-        membersRequired: document.getElementById('evCapacity').value,
-        category:        document.getElementById('evCategory').value,
-        description:     document.getElementById('evDesc').value,
-      }),
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }, // no Content-Type here!
+      body: formData,
     });
     const data = await res.json();
     if (data.success) { closeModal(createModal); document.getElementById('createForm').reset(); toast('Event launched!', 'success'); fetchEvents(); }

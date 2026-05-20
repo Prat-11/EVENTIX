@@ -1,68 +1,37 @@
-/**
- * Auth Controller
- * Handles HTTP requests/responses for authentication
- * Business logic is in authService
- */
+// authController.js — handles HTTP for auth, calls authService for logic
 import * as authService from '../services/authService.js';
 
-/**
- * Register new user
- * POST /api/auth/register
- */
+// POST /api/auth/register
 export const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
-    const userData = await authService.registerUser(name, email, password);
-    
-    res.status(201).json({
-      success: true,
-      data: userData
-    });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+    const data = await authService.registerUser(name, email, password);
+    res.status(201).json({ success: true, data });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
-/**
- * Login with email/password
- * POST /api/auth/login
- */
+// POST /api/auth/login
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const userData = await authService.loginUser(email, password);
-    
-    res.json({
-      success: true,
-      data: userData
-    });
-  } catch (error) {
-    if (error.status) {
-      return res.status(error.status).json({ success: false, error: error.message });
-    }
-    next(error);
+    const data = await authService.loginUser(email, password);
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err.status) return res.status(err.status).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
-/**
- * Get current user
- * GET /api/auth/me
- */
+// GET /api/auth/me — returns current logged-in user
 export const me = (req, res) => {
-  const userData = authService.getCurrentUser(req.user);
-  res.json({ 
-    success: true, 
-    data: userData
-  });
+  const data = authService.getCurrentUser(req.user);
+  res.json({ success: true, data });
 };
 
-/**
- * Logout
- * POST /api/auth/logout
- */
+// POST /api/auth/logout — JWT is stateless so just tell client to delete token
 export const logout = (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 };
