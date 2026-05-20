@@ -45,6 +45,7 @@ import eventRoutes from './routes/eventRoutes.js';
 
 // Middlewares
 import { apiLimiter } from './middlewares/rateLimiter.js';
+
 import {
   notFound,
   errorHandler
@@ -63,7 +64,8 @@ const NODE_ENV =
   process.env.NODE_ENV || 'development';
 
 const FRONTEND_URL =
-  process.env.FRONTEND_URL || '*';
+  process.env.FRONTEND_URL ||
+  'http://localhost:5173';
 
 const __dirname = dirname(
   fileURLToPath(import.meta.url)
@@ -75,7 +77,18 @@ const __dirname = dirname(
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
+
+// ==============================
+// ALLOWED ORIGINS
+// ==============================
+
+const allowedOrigins = [
+  FRONTEND_URL,
+  'http://localhost:5173'
+];
 
 // ==============================
 // SOCKET.IO
@@ -85,7 +98,7 @@ const io = new SocketIO(httpServer, {
   transports: ['websocket', 'polling'],
 
   cors: {
-    origin: FRONTEND_URL,
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -127,13 +140,31 @@ app.use(
 
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: function (origin, callback) {
+      // Allow requests with no origin
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(
+          new Error(
+            `CORS blocked for origin: ${origin}`
+          )
+        );
+      }
+    },
+
     credentials: true,
+
     methods: [
       'GET',
       'POST',
       'PUT',
       'DELETE',
+      'PATCH',
       'OPTIONS'
     ]
   })
@@ -200,7 +231,7 @@ app.use(
 // ROUTES
 // ==============================
 
-// Home
+// Root
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -208,9 +239,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// Dashboard
-app.get('/dashboard', (req, res) => {
-  res.redirect('/bookings.html');
+// Ping
+app.get('/ping', (req, res) => {
+  res.send('pong');
 });
 
 // Health Check
@@ -223,7 +254,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Dashboard Redirect
+app.get('/dashboard', (req, res) => {
+  res.redirect('/bookings.html');
+});
+
+// ==============================
 // API ROUTES
+// ==============================
+
 app.use('/api/auth', authRoutes);
 
 app.use('/api/users', userRoutes);
