@@ -1,77 +1,72 @@
-/**
- * Event Model - Sequelize Definition
- * Defines the structure of event data in PostgreSQL
- */
-// event model (for events table)
-import { DataTypes } from 'sequelize'; // datatypes for fields
-import { sequelize } from '../config/database.js'; // db connection
+import { DataTypes } from 'sequelize'; 
+import { sequelize } from '../config/database.js'; 
 
 // define event model
 const Event = sequelize.define('Event', {
   id: {
-    type: DataTypes.UUID, // unique id
-    defaultValue: DataTypes.UUIDV4, // auto uuid
-    primaryKey: true // primary key
+    type: DataTypes.UUID, 
+    defaultValue: DataTypes.UUIDV4, 
+    primaryKey: true 
   },
   organizerName: {
-    type: DataTypes.STRING, // name of organizer
-    allowNull: false // required
+    type: DataTypes.STRING, 
+    allowNull: false 
   },
   organizerId: {
-    type: DataTypes.UUID, // user id
-    allowNull: false, // required
+    type: DataTypes.UUID, 
+    allowNull: false, 
     references: {
-      model: 'Users', // ref users
+      model: 'Users', 
       key: 'id'
     }
   },
   eventName: {
-    type: DataTypes.STRING, // event name
-    allowNull: false, // required
-    trim: true // remove spaces
+    type: DataTypes.STRING, 
+    allowNull: false, 
+    trim: true 
   },
   date: {
-    type: DataTypes.DATE, // event date
-    allowNull: false // required
+    type: DataTypes.DATE, 
+    allowNull: false 
   },
   description: {
-    type: DataTypes.TEXT, // event desc
-    allowNull: true // optional
+    type: DataTypes.TEXT, 
+    allowNull: true 
   },
   category: {
     type: DataTypes.ENUM('music', 'tech', 'sports', 'food', 'general'), // type
-    defaultValue: 'general' // default
+    defaultValue: 'general' 
   },
   image: {
-    type: DataTypes.STRING, // image url
-    allowNull: true // optional
+    type: DataTypes.STRING, 
+    allowNull: true 
   },
   imagePublicId: {
-    type: DataTypes.STRING, // cloudinary id
-    allowNull: true // optional
+    type: DataTypes.STRING, 
+    allowNull: true 
   },
   membersRequired: {
-    type: DataTypes.INTEGER, // total members
-    allowNull: false, // required
+    type: DataTypes.INTEGER, 
+    allowNull: false, 
     validate: {
-      min: 1 // at least 1
+      min: 1 
     }
   },
   enrolledMembers: {
-    type: DataTypes.INTEGER, // joined
-    defaultValue: 0 // default 0
+    type: DataTypes.INTEGER, 
+    defaultValue: 0 
   },
   location: {
-    type: DataTypes.STRING, // event location
-    allowNull: true // optional
+    type: DataTypes.STRING, 
+    allowNull: true 
   },
   status: {
     type: DataTypes.ENUM('upcoming', 'ongoing', 'completed', 'cancelled'), // status
-    defaultValue: 'upcoming' // default
+    defaultValue: 'upcoming' 
   }
 }, {
-  timestamps: true, // auto add createdAt/updatedAt
-  underscored: false // camelCase fields
+  timestamps: true, 
+  underscored: false 
 });
 
-export default Event; // export model
+export default Event; 

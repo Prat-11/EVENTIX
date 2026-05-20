@@ -1,7 +1,3 @@
-/**
- * Models Index
- * Exports all models and sets up associations
- */
 import User from './User.js';
 import Event from './Event.js';
 import Reservation from './Reservation.js';

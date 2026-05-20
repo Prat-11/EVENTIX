@@ -1,8 +1,4 @@
-/**
- * User Model - Sequelize Definition
- * Defines the structure of user data in PostgreSQL
- */
-// user model (for users table)
+
 import { DataTypes } from 'sequelize'; // datatypes for fields
 import { sequelize } from '../config/database.js'; // db connection
 import bcryptjs from 'bcryptjs'; // for hashing passwords

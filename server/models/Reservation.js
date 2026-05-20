@@ -1,8 +1,4 @@
-/**
- * Reservation Model - Sequelize Definition
- * Tracks user event enrollments
- */
-// reservation model (for reservations table)
+
 import { DataTypes } from 'sequelize'; // datatypes for fields
 import { sequelize } from '../config/database.js'; // db connection
 
