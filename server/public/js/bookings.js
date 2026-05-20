@@ -1,4 +1,4 @@
-const API = 'http://localhost:3000/api';
+const API = 'https://eventix-a27u.onrender.com/api';
 
 // Check if user is logged in, if not redirect to login page
 let currentUser = null, authToken = null;

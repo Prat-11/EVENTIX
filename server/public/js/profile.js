@@ -1,4 +1,4 @@
-const API = 'http://localhost:3000/api';
+const API = 'https://eventix-a27u.onrender.com/api';
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 let currentUser = null, authToken = null;

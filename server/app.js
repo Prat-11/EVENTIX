@@ -85,9 +85,13 @@ const httpServer = createServer(app);
 // ALLOWED ORIGINS
 // ==============================
 
+// allowed origins — add your deployed frontend URL here
 const allowedOrigins = [
   FRONTEND_URL,
-  'http://localhost:5173'
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://eventix-a27u.onrender.com',  // Render backend (serves frontend too)
+  '*'                                    // allow all for now — tighten in production
 ];
 
 // ==============================
@@ -138,35 +142,12 @@ app.use(
 // CORS
 // ==============================
 
+// allow all origins — frontend is served from same Render domain
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(
-          new Error(
-            `CORS blocked for origin: ${origin}`
-          )
-        );
-      }
-    },
-
-    credentials: true,
-
-    methods: [
-      'GET',
-      'POST',
-      'PUT',
-      'DELETE',
-      'PATCH',
-      'OPTIONS'
-    ]
+    origin: '*',
+    credentials: false,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
   })
 );
 
@@ -216,33 +197,36 @@ app.use((req, res, next) => {
 });
 
 // ==============================
-// STATIC FILES
+// STATIC FILES — must come BEFORE routes and error handlers
 // ==============================
 
-app.use(
-  express.static(join(__dirname, 'public'))
-);
+// serve public folder — /css/*, /js/*, /images/*
+app.use(express.static(join(__dirname, 'public')));
 
-app.use(
-  express.static(join(__dirname, 'views'))
-);
+// also serve css/js at root level so /bookings.css and /bookings.js work
+app.use(express.static(join(__dirname, 'public/css')));
+app.use(express.static(join(__dirname, 'public/js')));
+app.use(express.static(join(__dirname, 'public/images')));
+
+// serve HTML files — /home.html, /login.html, etc.
+app.use(express.static(join(__dirname, 'views')));
 
 // ==============================
 // ROUTES
 // ==============================
 
-// Root
+// Root — serve home page instead of JSON
 app.get('/', (req, res) => {
-  res.json({
-    success: true,
-    message: 'EVENTIX Backend Running 🚀'
-  });
+  res.sendFile(join(__dirname, 'views', 'home.html'));
 });
 
 // Ping
 app.get('/ping', (req, res) => {
   res.send('pong');
 });
+
+// silence favicon 404
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 
 // Health Check
 app.get('/api/health', (req, res) => {

@@ -2,7 +2,7 @@
  * currevents.js — Events page
  * GSAP animations + Socket.io live concurrency + Theatre seat picker (3-step)
  */
-const API = 'http://localhost:3000/api';
+const API = 'https://eventix-a27u.onrender.com/api';
 gsap.registerPlugin(ScrollTrigger);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ function bindCursorHover() {
 }
 
 // ── Socket.io ─────────────────────────────────────────────────────────────────
-const socket = io('http://localhost:3000', { withCredentials: true });
+const socket = io('https://eventix-a27u.onrender.com', { withCredentials: true });
 socket.on('connect', () => {
   // Join events only if they're already loaded
   if (allEvents.length > 0) {
