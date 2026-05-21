@@ -1,12 +1,9 @@
-// eventService.js — all event logic + concurrency control lives here
 import { db } from '../config/database.js';
 import { deleteImage } from '../config/cloudinary.js';
 
-// ── Get all upcoming events ───────────────────────────────────────────────────
 export const getAllEvents = async () => {
-  const today = new Date().toISOString().split('T')[0]; // "2026-05-20"
+  const today = new Date().toISOString().split('T')[0];
 
-  // get events + their enrollments in one query using JSON aggregation
   const result = await db.query(
     `SELECT
        e.*,
@@ -31,11 +28,9 @@ export const getAllEvents = async () => {
     [today]
   );
 
-  // rename snake_case DB columns to camelCase for frontend
   return result.rows.map(formatEvent);
 };
 
-// ── Create event ──────────────────────────────────────────────────────────────
 export const createEvent = async (organizer, eventData, imageUrl, imagePublicId) => {
   const { eventName, date, membersRequired, description, category } = eventData;
 
@@ -52,199 +47,113 @@ export const createEvent = async (organizer, eventData, imageUrl, imagePublicId)
   return formatEvent(result.rows[0]);
 };
 
-// ── Get active reservations for an event ─────────────────────────────────────
 export const getEventReservations = async (eventId) => {
   const result = await db.query(
-    `SELECT * FROM reservations
-     WHERE event_id = $1 AND expires_at > NOW()`,
+    `SELECT * FROM reservations WHERE event_id = $1 AND expires_at > NOW()`,
     [eventId]
   );
   return result.rows;
 };
 
-// ── Reserve seats (5-minute hold) ────────────────────────────────────────────
 export const reserveSeats = async (eventId, userId, userName, seats) => {
   if (!seats.length) throw { status: 400, message: 'No seats provided' };
   if (seats.length > 10) throw { status: 400, message: 'Maximum 10 seats per booking' };
 
-  // check event exists
   const evRes = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
   if (!evRes.rows[0]) throw { status: 404, message: 'Event not found' };
 
-  // get all permanently taken seats for this event
-  const takenRes = await db.query(
-    `SELECT seats FROM enrollments WHERE event_id = $1`,
-    [eventId]
-  );
+  const takenRes = await db.query(`SELECT seats FROM enrollments WHERE event_id = $1`, [eventId]);
   const takenSeats = new Set(takenRes.rows.flatMap(r => r.seats || []));
-
-  // check if any requested seat is already permanently taken
   const conflict = seats.find(s => takenSeats.has(s));
   if (conflict) throw { status: 400, message: `Seat ${conflict} is already taken` };
 
-  // get seats reserved by OTHER users (not expired)
   const resRes = await db.query(
-    `SELECT seats FROM reservations
-     WHERE event_id = $1 AND expires_at > NOW() AND user_id != $2`,
+    `SELECT seats FROM reservations WHERE event_id = $1 AND expires_at > NOW() AND user_id != $2`,
     [eventId, userId]
   );
   const reservedByOthers = new Set(resRes.rows.flatMap(r => r.seats || []));
-
   const reservedConflict = seats.find(s => reservedByOthers.has(s));
   if (reservedConflict) throw { status: 400, message: `Seat ${reservedConflict} is being held by another user` };
 
-  // delete user's old reservation for this event (replace with new one)
   await db.query('DELETE FROM reservations WHERE event_id = $1 AND user_id = $2', [eventId, userId]);
 
-  // create new reservation — expires in 5 minutes
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
   const newRes = await db.query(
-    `INSERT INTO reservations (event_id, user_id, user_name, seats, expires_at)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id`,
+    `INSERT INTO reservations (event_id, user_id, user_name, seats, expires_at) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
     [eventId, userId, userName, JSON.stringify(seats), expiresAt]
   );
 
-  return {
-    reservationId: newRes.rows[0].id,
-    expiresAt: expiresAt.toISOString(),
-    eventId,
-    seats,
-    userId: userId.toString()
-  };
+  return { reservationId: newRes.rows[0].id, expiresAt: expiresAt.toISOString(), eventId, seats, userId: userId.toString() };
 };
 
-// ── Clear reservation ─────────────────────────────────────────────────────────
 export const clearReservation = async (eventId, userId) => {
-  // get seats before deleting so we can broadcast them as released
-  const res = await db.query(
-    'SELECT seats FROM reservations WHERE event_id = $1 AND user_id = $2',
-    [eventId, userId]
-  );
+  const res = await db.query('SELECT seats FROM reservations WHERE event_id = $1 AND user_id = $2', [eventId, userId]);
   const seats = res.rows.flatMap(r => r.seats || []);
-
   await db.query('DELETE FROM reservations WHERE event_id = $1 AND user_id = $2', [eventId, userId]);
-
   return { seats, eventId };
 };
 
-// ── Enroll in event (CONCURRENCY SAFE using PostgreSQL transaction) ────────────
 export const enrollInEvent = async (eventId, userData, seats) => {
   const count = seats.length || 1;
   if (count > 10) throw { status: 400, message: 'Maximum 10 seats per booking' };
 
-  // get a dedicated client for the transaction
   const client = await db.getClient();
 
   try {
-    await client.query('BEGIN'); // start transaction — all queries below are atomic
+    await client.query('BEGIN');
 
-    // SELECT FOR UPDATE locks the event row so no other request can modify it simultaneously
-    // this is the key to preventing race conditions / double booking
-    const evRes = await client.query(
-      'SELECT * FROM events WHERE id = $1 FOR UPDATE',
-      [eventId]
-    );
+    const evRes = await client.query('SELECT * FROM events WHERE id = $1 FOR UPDATE', [eventId]);
     const event = evRes.rows[0];
     if (!event) { await client.query('ROLLBACK'); throw { status: 404, message: 'Event not found' }; }
 
-    // check if user already enrolled
-    const alreadyRes = await client.query(
-      'SELECT id FROM enrollments WHERE event_id = $1 AND user_id = $2',
-      [eventId, userData.id]
-    );
-    if (alreadyRes.rows.length > 0) {
-      await client.query('ROLLBACK');
-      throw { status: 400, message: 'Already enrolled in this event' };
-    }
+    const alreadyRes = await client.query('SELECT id FROM enrollments WHERE event_id = $1 AND user_id = $2', [eventId, userData.id]);
+    if (alreadyRes.rows.length > 0) { await client.query('ROLLBACK'); throw { status: 400, message: 'Already enrolled in this event' }; }
 
-    // check capacity
     const spotsLeft = event.members_required - event.enrolled_members;
-    if (spotsLeft < count) {
-      await client.query('ROLLBACK');
-      throw { status: 400, message: `Only ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} remaining` };
-    }
+    if (spotsLeft < count) { await client.query('ROLLBACK'); throw { status: 400, message: `Only ${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} remaining` }; }
 
-    // check seat conflicts (race condition protection)
     if (seats.length > 0) {
-      const takenRes = await client.query(
-        'SELECT seats FROM enrollments WHERE event_id = $1',
-        [eventId]
-      );
+      const takenRes = await client.query('SELECT seats FROM enrollments WHERE event_id = $1', [eventId]);
       const takenSeats = new Set(takenRes.rows.flatMap(r => r.seats || []));
       const conflict = seats.find(s => takenSeats.has(s));
-      if (conflict) {
-        await client.query('ROLLBACK');
-        throw { status: 400, message: `Seat ${conflict} already taken — pick another` };
-      }
+      if (conflict) { await client.query('ROLLBACK'); throw { status: 400, message: `Seat ${conflict} already taken` }; }
     }
 
-    // insert enrollment record
     await client.query(
-      `INSERT INTO enrollments (event_id, user_id, user_name, user_email, seats, seat_count)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+      `INSERT INTO enrollments (event_id, user_id, user_name, user_email, seats, seat_count) VALUES ($1, $2, $3, $4, $5, $6)`,
       [eventId, userData.id, userData.name, userData.email, JSON.stringify(seats), count]
     );
 
-    // increment enrolled_members count on the event
-    await client.query(
-      'UPDATE events SET enrolled_members = enrolled_members + $1 WHERE id = $2',
-      [count, eventId]
-    );
+    await client.query('UPDATE events SET enrolled_members = enrolled_members + $1 WHERE id = $2', [count, eventId]);
+    await client.query('DELETE FROM reservations WHERE event_id = $1 AND user_id = $2', [eventId, userData.id]);
 
-    // delete the reservation (no longer needed — booking is permanent now)
-    await client.query(
-      'DELETE FROM reservations WHERE event_id = $1 AND user_id = $2',
-      [eventId, userData.id]
-    );
+    await client.query('COMMIT');
 
-    await client.query('COMMIT'); // everything succeeded — save all changes
-
-    // get updated event for socket broadcast
     const updatedEv = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
-
-    return {
-      message: `${count} seat${count > 1 ? 's' : ''} booked successfully`,
-      seats,
-      event: formatEvent(updatedEv.rows[0]),
-      eventId,
-      userId: userData.id
-    };
+    return { message: `${count} seat${count > 1 ? 's' : ''} booked successfully`, seats, event: formatEvent(updatedEv.rows[0]), eventId, userId: userData.id };
 
   } catch (err) {
-    await client.query('ROLLBACK'); // something failed — undo everything
+    await client.query('ROLLBACK');
     throw err;
   } finally {
-    client.release(); // always give client back to pool
+    client.release();
   }
 };
 
-// ── Delete event ──────────────────────────────────────────────────────────────
 export const deleteEvent = async (eventId, userId, isAdmin) => {
   const res = await db.query('SELECT * FROM events WHERE id = $1', [eventId]);
   const event = res.rows[0];
-
   if (!event) throw { status: 404, message: 'Event not found' };
   if (event.organizer_id !== userId && !isAdmin) throw { status: 403, message: 'Forbidden' };
-
-  // delete image from Cloudinary if it has one
   if (event.image_public_id) deleteImage(event.image_public_id);
-
   await db.query('DELETE FROM events WHERE id = $1', [eventId]);
-
   return { eventId };
 };
 
-// ── Cleanup expired reservations (called every minute by app.js) ──────────────
 export const cleanupExpiredReservations = async () => {
-  // find expired ones first so we can broadcast which seats are now free
-  const expired = await db.query(
-    'SELECT event_id, seats FROM reservations WHERE expires_at <= NOW()'
-  );
-
+  const expired = await db.query('SELECT event_id, seats FROM reservations WHERE expires_at <= NOW()');
   if (expired.rows.length === 0) return { count: 0, released: {} };
 
-  // group released seats by event
   const released = {};
   expired.rows.forEach(r => {
     const eid = r.event_id;
@@ -252,13 +161,10 @@ export const cleanupExpiredReservations = async () => {
     released[eid].push(...(r.seats || []));
   });
 
-  // delete them all
   await db.query('DELETE FROM reservations WHERE expires_at <= NOW()');
-
   return { count: expired.rows.length, released };
 };
 
-// ── Helper: rename DB columns to camelCase for frontend ───────────────────────
 const formatEvent = (row) => {
   if (!row) return null;
   return {
