@@ -75,29 +75,5 @@ reservations — id, event_id, user_id, seats, expires_at  (5-min temporary hold
 4. If two users try to book the same seat simultaneously, the transaction ensures only one succeeds
 5. Background job runs every 60 seconds to delete expired reservations and broadcast freed seats
 
-## Environment Variables
 
-```
-DATABASE_URL
-SUPABASE_URL
-SUPABASE_SERVICE_KEY
-CLOUDINARY_CLOUD_NAME
-CLOUDINARY_API_KEY
-CLOUDINARY_API_SECRET
-JWT_SECRET
-SESSION_SECRET
-PORT
-NODE_ENV
-```
-
-## Local Setup
-
-```bash
-git clone https://github.com/Prat-11/EVENTIX
-cd EVENTIX/server
-npm install
-# fill in .env
-npm start
-```
-
-Open http://localhost:3000
+Open https://eventix-a27u.onrender.com
